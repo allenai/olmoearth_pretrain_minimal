@@ -10,6 +10,18 @@ Install using `uv`:
 uv pip install -e .
 ```
 
+## Model Summary
+
+<img src="https://raw.githubusercontent.com/allenai/olmoearth_pretrain/main/assets/model.png" alt="Model Architecture Diagram" style="width: 800px; margin-left:'auto' margin-right:'auto' display:'block'"/>
+
+The OlmoEarth models are trained on three satellite modalities (Sentinel 2, Sentinel 1 and Landsat) and six derived maps (OpenStreetMap, WorldCover, USDA Cropland Data Layer, SRTM DEM, WRI Canopy Height Map, and WorldCereal).
+| Model Size | Weights | Encoder Params | Decoder Params |
+| --- | --- | --- | --- |
+| Nano | [link](https://huggingface.co/allenai/OlmoEarth-v1-Nano) | 1.4M | 800K |
+| Tiny | [link](https://huggingface.co/allenai/OlmoEarth-v1-Tiny) | 6.2M | 1.9M |
+| Base | [link](https://huggingface.co/allenai/OlmoEarth-v1-Base) | 89M | 30M |
+| Large | [link](https://huggingface.co/allenai/OlmoEarth-v1-Large) | 308M | 53M |
+
 ## Usage
 
 ### Initializing a Model
