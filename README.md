@@ -15,9 +15,14 @@ To install dependencies:
 ```
 git clone git@github.com:allenai/olmoearth_pretrain_minimal.git
 cd olmoearth_pretrain_minimal
-uv sync --locked --all-groups --python 3.12
+# Install with CPU-only PyTorch (works on all platforms including Linux)
+uv sync --locked --python 3.12 --extra torch-cpu
+# Or install with CUDA 12.8 PyTorch
+uv sync --locked --python 3.12 --extra torch-cu128
 ```
 uv installs everything into a venv, so to keep using python commands you can activate uv's venv: `source .venv/bin/activate`. Otherwise, swap to `uv run python`.
+
+**Note:** You must specify either `--extra torch-cpu` or `--extra torch-cu128` to install PyTorch. This allows you to explicitly choose the CPU or GPU version regardless of your platform, which is especially useful for CI environments that need CPU-only builds on Linux.
 
 
 ## Model Summary

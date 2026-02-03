@@ -15,7 +15,7 @@ from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.nn.latent_mim import Laten
 
 # Model size configurations matching the official OlmoEarth v1 models
 MODEL_SIZE_CONFIGS = {
-    "nano": {
+    "nano_shallow_decoder": {
         "decoder_depth": 4,
         "encoder_embedding_size": 128,
         "decoder_embedding_size": 128,
@@ -24,8 +24,8 @@ MODEL_SIZE_CONFIGS = {
         "decoder_num_heads": 8,
         "mlp_ratio": 4.0,
     },
-    "tiny": {
-        "decoder_depth": 4,  # shallow decoder
+    "tiny_shallow_decoder": {
+        "decoder_depth": 4,
         "encoder_embedding_size": 192,
         "decoder_embedding_size": 192,
         "encoder_depth": 12,
@@ -33,8 +33,8 @@ MODEL_SIZE_CONFIGS = {
         "decoder_num_heads": 3,
         "mlp_ratio": 4.0,
     },
-    "base": {
-        "decoder_depth": 4,  # shallow decoder
+    "base_shallow_decoder": {
+        "decoder_depth": 4,
         "encoder_embedding_size": 768,
         "decoder_embedding_size": 768,
         "encoder_depth": 12,
@@ -42,8 +42,8 @@ MODEL_SIZE_CONFIGS = {
         "decoder_num_heads": 12,
         "mlp_ratio": 4.0,
     },
-    "large": {
-        "decoder_depth": 4,  # shallow decoder
+    "large_shallow_decoder": {
+        "decoder_depth": 4,
         "encoder_embedding_size": 1024,
         "decoder_embedding_size": 1024,
         "encoder_depth": 24,
@@ -95,16 +95,18 @@ class OlmoEarthPretrain_v1(torch.nn.Module):
         """
         super().__init__()
 
-        if model_size not in MODEL_SIZE_CONFIGS:
+        # Map user-facing model size to internal config key with shallow_decoder suffix
+        config_key = f"{model_size}_shallow_decoder"
+        if config_key not in MODEL_SIZE_CONFIGS:
             raise ValueError(
                 f"Invalid model_size: {model_size}. "
-                f"Must be one of {list(MODEL_SIZE_CONFIGS.keys())}"
+                f"Must be one of {['nano', 'tiny', 'base', 'large']}"
             )
 
         if supported_modality_names is None:
             supported_modality_names = DEFAULT_MODALITIES
 
-        model_config = MODEL_SIZE_CONFIGS[model_size]
+        model_config = MODEL_SIZE_CONFIGS[config_key]
 
         # Build encoder config
         encoder_config = EncoderConfig(

@@ -12,8 +12,21 @@ dependencies = [
     "einops>=0.7.0",
     "huggingface_hub",
     "numpy>=1.26.4",
-    "torch>=2.7,<2.8",
     "universal-pathlib>=0.2.5",
+]
+
+[project.optional-dependencies]
+torch-cpu = [
+    "torch>=2.8,<2.9",
+    "torchvision>=0.23,<1",
+]
+torch-cu128 = [
+    "pytorch-triton",
+    "torch>=2.8,<2.9",
+    "torchvision>=0.23,<1",
+]
+dev = [
+    "pytest>=7.0.0",
 ]
 
 [build-system]
@@ -25,8 +38,15 @@ include = ["olmoearth_pretrain_minimal*"]
 
 [tool.uv.sources]
 torch = [
-  { index = "pytorch-cpu", marker = "sys_platform != 'linux'" },
-  { index = "pytorch-cu128", marker = "sys_platform == 'linux'" },
+    { index = "pytorch-cpu", extra = "torch-cpu" },
+    { index = "pytorch-cu128", extra = "torch-cu128" },
+]
+torchvision = [
+    { index = "pytorch-cpu", extra = "torch-cpu" },
+    { index = "pytorch-cu128", extra = "torch-cu128" },
+]
+pytorch-triton = [
+    { index = "pytorch-cu128", extra = "torch-cu128" },
 ]
 
 [[tool.uv.index]]
@@ -38,4 +58,10 @@ explicit = true
 name = "pytorch-cu128"
 url = "https://download.pytorch.org/whl/cu128"
 explicit = true
+
+[tool.pytest.ini_options]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]
+testpaths = ["tests"]
 
