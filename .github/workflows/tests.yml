@@ -1,0 +1,53 @@
+name: Tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test:
+    name: Test with torch-cpu
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version-file: "pyproject.toml"
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v6
+      with:
+        version: "0.9.5"
+
+    - name: Install dependencies
+      run: |
+        # Install with CPU-only torch (suitable for CI)
+        # Use uv pip install to bypass uv.sources configuration that causes conflicts
+        uv venv
+        source .venv/bin/activate
+        # Install torch from CPU index
+        uv pip install --index-url https://download.pytorch.org/whl/cpu "torch>=2.8,<2.9" "torchvision>=0.23,<1"
+        # Install base dependencies
+        uv pip install "einops>=0.7.0" "huggingface_hub" "numpy>=1.26.4" "universal-pathlib>=0.2.5"
+        # Install dev dependencies
+        uv pip install "pytest>=7.0.0"
+        # Install the project itself
+        uv pip install -e .
+
+    - name: Run tests (without weights)
+      run: |
+        source .venv/bin/activate
+        pytest -v tests/ -m "not slow"
+
+    - name: Run tests (with weights - slow)
+      run: |
+        source .venv/bin/activate
+        pytest -v tests/ -m slow
+
