@@ -26,12 +26,21 @@ print(f"Model has {sum(p.numel() for p in model_large.parameters())} parameters"
 
 # Example 3: Load with pre-trained weights (if available)
 print("\nLoading OlmoEarth-v1-Nano with pre-trained weights...")
-try:
-    model_with_weights = load_model_from_id(ModelID.OLMOEARTH_V1_NANO, load_weights=True)
-    print(f"Model loaded with pre-trained weights: {type(model_with_weights)}")
-except Exception as e:
-    print(f"Could not load weights (this is expected if weights are not yet available): {e}")
+model_with_weights = load_model_from_id(ModelID.OLMOEARTH_V1_NANO, load_weights=True)
+print(f"Model loaded with pre-trained weights: {type(model_with_weights)}")
 
+print("\nLoading OlmoEarth-v1-Tiny with pre-trained weights...")
+model_with_weights = load_model_from_id(ModelID.OLMOEARTH_V1_TINY, load_weights=True)
+print(f"Model loaded with pre-trained weights: {type(model_with_weights)}")
+
+print("\nLoading OlmoEarth-v1-Base with pre-trained weights...")
+model_with_weights = load_model_from_id(ModelID.OLMOEARTH_V1_BASE, load_weights=True)
+print(f"Model loaded with pre-trained weights: {type(model_with_weights)}")
+
+print("\nLoading OlmoEarth-v1-Large with pre-trained weights...")
+model_with_weights = load_model_from_id(ModelID.OLMOEARTH_V1_LARGE, load_weights=True)
+print(f"Model loaded with pre-trained weights: {type(model_with_weights)}")
+    
 # Example 4: Initialize with custom modalities (requires direct instantiation)
 print("\nInitializing with custom modalities (direct instantiation)...")
 custom_model = OlmoEarthPretrain_v1(

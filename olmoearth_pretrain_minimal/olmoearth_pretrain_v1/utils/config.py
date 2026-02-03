@@ -1,19 +1,14 @@
-"""Centralized config handling with optional olmo-core dependency.
+"""Standalone config handling for olmoearth_pretrain_minimal.
 
-This module provides a unified Config class that works with or without olmo-core:
-- If olmo-core is installed: uses olmo-core's full-featured Config
-- If olmo-core is not installed: uses a minimal standalone Config for inference
+This module provides a minimal Config class for inference-only mode.
+It does not depend on olmo-core and supports loading models from JSON configs.
 
 Usage:
-    from olmoearth_pretrain.utils.config import Config, OLMO_CORE_AVAILABLE, require_olmo_core
+    from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.config import Config
 
     @dataclass
     class MyConfig(Config):
         ...
-
-For training code, add a guard at module level:
-    from olmoearth_pretrain.utils.config import require_olmo_core
-    require_olmo_core("Training")
 """
 
 from __future__ import annotations
@@ -23,36 +18,8 @@ from dataclasses import dataclass, fields, is_dataclass
 from importlib import import_module
 from typing import Any, TypeVar
 
-# === Single source of truth for olmo-core availability ===
-try:
-    from olmo_core.config import Config as _OlmoCoreConfig
-
-    OLMO_CORE_AVAILABLE = True
-except ImportError:
-    OLMO_CORE_AVAILABLE = False
-    _OlmoCoreConfig = None  # type: ignore[assignment, misc]
-
-
-def require_olmo_core(operation: str = "This operation") -> None:
-    """Guard for training code - raises ImportError if olmo-core not available.
-
-    Use this at the entry points of training modules to provide a clear error message.
-
-    Args:
-        operation: Description of what requires olmo-core (used in error message).
-
-    Raises:
-        ImportError: If olmo-core is not installed.
-
-    Example:
-        from olmoearth_pretrain.utils.config import require_olmo_core
-        require_olmo_core("Training")  # Raises if olmo-core not available
-    """
-    if not OLMO_CORE_AVAILABLE:
-        raise ImportError(
-            f"{operation} requires olmo-core. "
-            "Install with: pip install olmoearth-pretrain[training]"
-        )
+# olmo-core is not used in the minimal package
+OLMO_CORE_AVAILABLE = False
 
 
 C = TypeVar("C", bound="_StandaloneConfig")
@@ -79,6 +46,16 @@ class _StandaloneConfig:
         """Resolve a fully-qualified class name to a class object."""
         if "." not in class_name:
             return None
+        
+        # Map old package paths to new ones for compatibility
+        # Handle both "helios" (old name) and "olmoearth_pretrain" package names
+        if class_name.startswith("helios."):
+            class_name = class_name.replace("helios.", "olmoearth_pretrain_minimal.olmoearth_pretrain_v1.", 1)
+            # Fix common typos in config files
+            class_name = class_name.replace("flexihelios", "flexi_vit")
+        elif class_name.startswith("olmoearth_pretrain."):
+            class_name = class_name.replace("olmoearth_pretrain.", "olmoearth_pretrain_minimal.olmoearth_pretrain_v1.", 1)
+        
         *modules, cls_name = class_name.split(".")
         module_name = ".".join(modules)
         try:
@@ -93,11 +70,14 @@ class _StandaloneConfig:
         if isinstance(data, dict):
             # Check if this dict represents a config class
             class_name = data.get(cls.CLASS_NAME_FIELD)
-            cleaned = {
-                k: cls._clean_data(v)
-                for k, v in data.items()
-                if k != cls.CLASS_NAME_FIELD
-            }
+            
+            # First, recursively clean all nested values
+            # This will resolve nested configs that have _CLASS_ fields
+            cleaned = {}
+            for k, v in data.items():
+                if k != cls.CLASS_NAME_FIELD:
+                    cleaned_value = cls._clean_data(v)
+                    cleaned[k] = cleaned_value
 
             if class_name is not None:
                 resolved_cls = cls._resolve_class(class_name)
@@ -108,12 +88,29 @@ class _StandaloneConfig:
                     valid_kwargs = {
                         k: v for k, v in cleaned.items() if k in field_names
                     }
+                    # Ensure nested dicts that should be Config instances are resolved
+                    # The recursive _clean_data() should have resolved them, but resolve any remaining dicts
+                    for key, value in list(valid_kwargs.items()):
+                        if isinstance(value, dict) and not is_dataclass(value):
+                            # Try to resolve as Config using from_dict
+                            if cls.CLASS_NAME_FIELD in value:
+                                nested_class_name = value[cls.CLASS_NAME_FIELD]
+                                nested_resolved_cls = cls._resolve_class(nested_class_name)
+                                if nested_resolved_cls is not None and is_dataclass(nested_resolved_cls):
+                                    nested_dict = {k: v for k, v in value.items() if k != cls.CLASS_NAME_FIELD}
+                                    valid_kwargs[key] = nested_resolved_cls.from_dict(nested_dict)
+                                else:
+                                    raise ValueError(
+                                        f"Could not resolve nested config class '{nested_class_name}' for field '{key}'"
+                                    )
                     try:
                         return resolved_cls(**valid_kwargs)
                     except TypeError as e:
                         raise TypeError(
                             f"Failed to instantiate {class_name}: {e}"
                         ) from e
+                # If class resolution failed, keep _CLASS_ field in dict for from_dict() to retry
+                cleaned[cls.CLASS_NAME_FIELD] = class_name
             return cleaned
 
         elif isinstance(data, list | tuple):
@@ -150,15 +147,30 @@ class _StandaloneConfig:
 
         cleaned = cls._clean_data(data)
 
-        if isinstance(cleaned, cls):
+        # If _clean_data resolved a config class instance (from _CLASS_ field), return it directly
+        if is_dataclass(cleaned) and not isinstance(cleaned, type):
+            return cleaned
+        elif isinstance(cleaned, cls):
             return cleaned
         elif isinstance(cleaned, dict):
-            # Get field names for this class
+            # Check if the dict has a _CLASS_ field that we should try to resolve
+            if cls.CLASS_NAME_FIELD in cleaned:
+                class_name = cleaned[cls.CLASS_NAME_FIELD]
+                resolved_cls = cls._resolve_class(class_name)
+                if resolved_cls is not None and is_dataclass(resolved_cls):
+                    config_dict = {k: v for k, v in cleaned.items() if k != cls.CLASS_NAME_FIELD}
+                    return resolved_cls.from_dict(config_dict)
+                else:
+                    raise ValueError(
+                        f"Could not resolve class '{class_name}' from _CLASS_ field. "
+                        f"Make sure the class exists and is importable."
+                    )
+            # No _CLASS_ field, try to create base Config instance
             field_names = {f.name for f in fields(cls)}
             valid_kwargs = {k: v for k, v in cleaned.items() if k in field_names}
             return cls(**valid_kwargs)
         else:
-            raise TypeError(f"Expected dict, got {type(cleaned)}")
+            raise TypeError(f"Expected dict or config instance, got {type(cleaned)}")
 
     def as_dict(
         self,
@@ -245,18 +257,8 @@ class _StandaloneConfig:
 
 
 # === The unified export ===
-# Use olmo-core Config if available, otherwise use standalone
-if OLMO_CORE_AVAILABLE:
-    Config = _OlmoCoreConfig  # type: ignore[assignment,misc]
-else:
-    Config = _StandaloneConfig
-    # Emit warning once when module is first imported
-    warnings.warn(
-        "olmo-core not installed. Running in inference-only mode. "
-        "For training: pip install olmoearth-pretrain[training]",
-        UserWarning,
-        stacklevel=2,
-    )
+# Always use standalone config for minimal package (no olmo-core dependency)
+Config = _StandaloneConfig
 
 
-__all__ = ["Config", "OLMO_CORE_AVAILABLE", "require_olmo_core"]
+__all__ = ["Config", "OLMO_CORE_AVAILABLE"]

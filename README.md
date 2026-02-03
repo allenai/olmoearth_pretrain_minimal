@@ -17,7 +17,7 @@ git clone git@github.com:allenai/olmoearth_pretrain_minimal.git
 cd olmoearth_pretrain_minimal
 uv sync --locked --all-groups --python 3.12
 ```
-uv installs everything into a venv, so to keep using python commands you can activate uv's venv: source .venv/bin/activate. Otherwise, swap to uv run python.
+uv installs everything into a venv, so to keep using python commands you can activate uv's venv: `source .venv/bin/activate`. Otherwise, swap to `uv run python`.
 
 
 ## Model Summary
