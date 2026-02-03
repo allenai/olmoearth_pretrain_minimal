@@ -2,31 +2,23 @@
 
 A minimal package for loading and initializing OlmoEarth v1 models. This package contains only the code necessary to load models from Hugging Face or initialize them with random weights, without training or evaluation dependencies.
 
-## Installation
 
-### Prerequisites
+## Installation
 
 Install `uv` if you haven't already:
 
 ```bash
-# macOS/Linux
 curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Or using pip
-pip install uv
 ```
 
-### Install the Package
-
-From the repository root:
-
-```bash
-# Install in editable mode
-uv pip install -e .
-
-# Or install from a local copy
-uv pip install /path/to/olmoearth_pretrain_minimal
+To install dependencies:
 ```
+git clone git@github.com:allenai/olmoearth_pretrain_minimal.git
+cd olmoearth_pretrain_minimal
+uv sync --locked --all-groups --python 3.12
+```
+uv installs everything into a venv, so to keep using python commands you can activate uv's venv: source .venv/bin/activate. Otherwise, swap to uv run python.
+
 
 ## Model Summary
 
@@ -40,6 +32,7 @@ The OlmoEarth models are trained on three satellite modalities (Sentinel 2, Sent
 | Base | [link](https://huggingface.co/allenai/OlmoEarth-v1-Base) | 89M | 30M |
 | Large | [link](https://huggingface.co/allenai/OlmoEarth-v1-Large) | 308M | 53M |
 
+
 ## Usage
 
 ### Loading Models from Hugging Face
@@ -49,34 +42,17 @@ The recommended way to load models is using the model loader, which downloads th
 ```python
 from olmoearth_pretrain_minimal import ModelID, load_model_from_id
 
-# Load a model from Hugging Face (without pre-trained weights, randomly initialized)
-model = load_model_from_id(ModelID.OLMOEARTH_V1_NANO, load_weights=False)
-
-# Available model IDs:
+# Load a model from Hugging Face with pre-trained weights
 # - ModelID.OLMOEARTH_V1_NANO - 1.4M encoder params, 800K decoder params
 # - ModelID.OLMOEARTH_V1_TINY - 6.2M encoder params, 1.9M decoder params
 # - ModelID.OLMOEARTH_V1_BASE - 89M encoder params, 30M decoder params
 # - ModelID.OLMOEARTH_V1_LARGE - 308M encoder params, 53M decoder params
+model = load_model_from_id(ModelID.OLMOEARTH_V1_BASE, load_weights=True)
 
-# Load different model sizes
-model_tiny = load_model_from_id(ModelID.OLMOEARTH_V1_TINY, load_weights=False)
-model_base = load_model_from_id(ModelID.OLMOEARTH_V1_BASE, load_weights=False)
-model_large = load_model_from_id(ModelID.OLMOEARTH_V1_LARGE, load_weights=False)
-
-# Load with pre-trained weights (if available)
+# Load with randomly initialized weights 
 model_with_weights = load_model_from_id(ModelID.OLMOEARTH_V1_NANO, load_weights=True)
 ```
 
-### Loading Models from Local Path
-
-You can also load models from a local directory:
-
-```python
-from olmoearth_pretrain_minimal import load_model_from_path
-
-# Load from local path (requires config.json and optionally weights.pth)
-model = load_model_from_path("/path/to/model", load_weights=True)
-```
 
 ### Direct Model Initialization (Custom Configuration)
 
@@ -93,12 +69,6 @@ model = OlmoEarthPretrain_v1(
     max_sequence_length=12,
     drop_path=0.1,
 )
-
-# Available model sizes:
-# - "nano" - 1.4M encoder params, 800K decoder params
-# - "tiny" - 6.2M encoder params, 1.9M decoder params
-# - "base" - 89M encoder params, 30M decoder params
-# - "large" - 308M encoder params, 53M decoder params
 ```
 
 ### Manual Weight Loading

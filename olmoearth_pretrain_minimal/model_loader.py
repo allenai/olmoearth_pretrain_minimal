@@ -189,12 +189,24 @@ def _load_v1_model_from_config(path: UPath) -> torch.nn.Module:
     # Check if we have a full model config
     if "model" in config_dict:
         model_config_dict = config_dict["model"]
-        # Try to load using Config.from_dict
+        cleaned = None
+        # First, try to use _clean_data to resolve _CLASS_ fields
         try:
-            model_config = Config.from_dict(model_config_dict)
-            if hasattr(model_config, "build"):
-                return model_config.build()
-        except (TypeError, AttributeError, KeyError):
+            # _clean_data will resolve _CLASS_ fields and return the proper config instance
+            cleaned = Config._clean_data(model_config_dict)
+            # If _clean_data resolved a config class, it should be an instance with build()
+            if hasattr(cleaned, "build") and callable(getattr(cleaned, "build")):
+                return cleaned.build()
+        except (TypeError, AttributeError, KeyError, NotImplementedError):
+            pass
+        
+        # If _clean_data didn't resolve to a config instance, try LatentMIMConfig.from_dict
+        try:
+            # Use the cleaned dict if it's a dict, otherwise use the original
+            config_to_use = cleaned if (cleaned is not None and isinstance(cleaned, dict)) else model_config_dict
+            model_config = LatentMIMConfig.from_dict(config_to_use)
+            return model_config.build()
+        except (TypeError, AttributeError, KeyError, NotImplementedError):
             # Fall through to try model_size approach
             pass
 
