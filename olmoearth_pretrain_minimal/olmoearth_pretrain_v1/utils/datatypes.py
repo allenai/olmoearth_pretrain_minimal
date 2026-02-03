@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any, NamedTuple
 
 import torch
 
-from olmoearth_pretrain.utils.types import ArrayTensor
+from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.types import ArrayTensor
 
 
 class MaskValue(Enum):

@@ -14,10 +14,10 @@ from torch.distributed.fsdp import (
     register_fsdp_forward_method,
 )
 
-from olmoearth_pretrain.utils.config import Config
-from olmoearth_pretrain.utils.datatypes import MaskedOlmoEarthSample
-from olmoearth_pretrain.nn.flexi_vit import TokensAndMasks
-from olmoearth_pretrain.nn.utils import DistributedMixins, unpack_encoder_output
+from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.config import Config
+from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.datatypes import MaskedOlmoEarthSample
+from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.nn.flexi_vit import TokensAndMasks
+from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.nn.utils import DistributedMixins, unpack_encoder_output
 
 logger = logging.getLogger(__name__)
 

@@ -9,9 +9,9 @@ from typing import Literal
 
 import torch
 
-from olmoearth_pretrain.utils.constants import Modality
-from olmoearth_pretrain.nn.flexi_vit import EncoderConfig, PredictorConfig
-from olmoearth_pretrain.nn.latent_mim import LatentMIM, LatentMIMConfig
+from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.constants import Modality
+from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.nn.flexi_vit import EncoderConfig, PredictorConfig
+from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.nn.latent_mim import LatentMIM, LatentMIMConfig
 
 # Model size configurations matching the official OlmoEarth v1 models
 MODEL_SIZE_CONFIGS = {

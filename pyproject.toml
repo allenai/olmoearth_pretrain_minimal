@@ -21,10 +21,7 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["olmoearth_pretrain*"]
-
-[tool.setuptools.package-data]
-"olmoearth_pretrain.data.norm_configs" = ["*.json"]
+include = ["olmoearth_pretrain_minimal*"]
 
 [tool.uv.sources]
 torch = [
