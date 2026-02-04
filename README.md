@@ -92,69 +92,46 @@ weights = torch.load("path/to/weights.pth")
 model.load_state_dict(weights)
 ```
 
-### Data Normalization and Inference
+### Data Normalization
 
-The model expects normalized input data. Use the `Normalizer` class to normalize your data before passing it to the model. The normalizer uses pre-computed statistics from the training dataset.
+The model expects normalized input data. Use the `Normalizer` class to normalize your data before passing it to the model.
 
 **Important:** Data must be provided with bands in the specific order expected by each modality. See the band order section below.
 
 ```python
-from olmoearth_pretrain_minimal import ModelID, load_model_from_id, Normalizer
-from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.constants import Modality
-from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.datatypes import MaskedOlmoEarthSample, MaskValue
 import torch
 import numpy as np
 
-# Load model
-model = load_model_from_id(ModelID.OLMOEARTH_V1_BASE, load_weights=True)
-model.eval()
+from olmoearth_pretrain_minimal import load_model_from_id, ModelID, Normalizer
+from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.constants import Modality
+from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.datatypes import MaskedOlmoEarthSample
 
 # Initialize normalizer
 normalizer = Normalizer(std_multiplier=2.0)
 
-# Example: Prepare Sentinel-2 L2A data
-# Data shape: (batch, height, width, time, bands)
-# Bands must be in the order specified by Modality.SENTINEL2_L2A.band_order
-# For Sentinel-2 L2A: ['B02', 'B03', 'B04', 'B08', 'B05', 'B06', 'B07', 'B8A', 'B11', 'B12', 'B01', 'B09'] (12 bands)
-sentinel2_data = np.random.rand(1, 128, 128, 12, 12).astype(np.float32)  # 12 bands for Sentinel-2 L2A
+# Prepare Sentinel-2 L2A data: (batch, height, width, time, bands)
+# Bands must match Modality.SENTINEL2_L2A.band_order (12 bands)
+sentinel2_data = np.random.rand(1, 128, 128, 12, 12).astype(np.float32)
 
 # Normalize the data
-sentinel2_modality = Modality.SENTINEL2_L2A
-normalized_sentinel2 = normalizer.normalize(sentinel2_modality, sentinel2_data)
+normalized_sentinel2 = normalizer.normalize(Modality.SENTINEL2_L2A, sentinel2_data)
 
-# Convert to torch tensor (ensure float32 dtype)
-sentinel2_tensor = torch.from_numpy(normalized_sentinel2).float()
+model = load_model_from_id(ModelID.OLMOEARTH_V1_BASE, load_weights=True)
+model.eval()
 
-# Create masks (0 = ONLINE_ENCODER, 1 = TARGET_ENCODER_ONLY, 2 = DECODER, 3 = MISSING)
-# For inference, typically use ONLINE_ENCODER (0) for all valid pixels
-sentinel2_mask = torch.zeros(1, 128, 128, 12, dtype=torch.long)
+# Create minimal sample (timestamps required, month must be long for embedding)
+timestamps = torch.zeros(1, 12, 3, dtype=torch.long)
+timestamps[:, :, 1] = torch.arange(12, dtype=torch.long)  # months 0-11
 
-# Prepare timestamps: [batch, time, 3] where 3 = [day, month, year]
-# Months are zero-indexed (0-11)
-timestamps = torch.zeros(1, 12, 3, dtype=torch.float32)  # 12 time steps
-
-# Ensure all tensors are on the same device (CPU or GPU)
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = model.to(device)
-sentinel2_tensor = sentinel2_tensor.to(device)
-sentinel2_mask = sentinel2_mask.to(device)
-timestamps = timestamps.to(device)
-
-# Create input sample
 sample = MaskedOlmoEarthSample(
     timestamps=timestamps,
-    sentinel2_l2a=sentinel2_tensor,
-    sentinel2_l2a_mask=sentinel2_mask,
+    sentinel2_l2a=torch.from_numpy(normalized_sentinel2).float(),
+    sentinel2_l2a_mask=torch.zeros(1, 128, 128, 12, dtype=torch.long),
 )
 
-# Run inference
-# Option 1: Access encoder directly
 with torch.no_grad():
-    output = model.encoder(sample, patch_size=8, input_res=10)
-
-# Option 2: Use the full model forward pass (encoder + decoder)
-# with torch.no_grad():
-#     latent, decoded, latent_projected, reconstructed, extra_metrics = model(sample, patch_size=8)
+    output = model.encoder(sample, patch_size=8, input_res=10, fast_pass=True)
+```
 ```
 
 ### Expected Band Orders
