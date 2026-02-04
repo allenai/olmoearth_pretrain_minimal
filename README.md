@@ -122,8 +122,8 @@ sentinel2_data = np.random.rand(1, 128, 128, 12, 12).astype(np.float32)  # 12 ba
 sentinel2_modality = Modality.SENTINEL2_L2A
 normalized_sentinel2 = normalizer.normalize(sentinel2_modality, sentinel2_data)
 
-# Convert to torch tensor
-sentinel2_tensor = torch.from_numpy(normalized_sentinel2)
+# Convert to torch tensor (ensure float32 dtype)
+sentinel2_tensor = torch.from_numpy(normalized_sentinel2).float()
 
 # Create masks (0 = ONLINE_ENCODER, 1 = TARGET_ENCODER_ONLY, 2 = DECODER, 3 = MISSING)
 # For inference, typically use ONLINE_ENCODER (0) for all valid pixels
@@ -132,6 +132,13 @@ sentinel2_mask = torch.zeros(1, 128, 128, 12, dtype=torch.long)
 # Prepare timestamps: [batch, time, 3] where 3 = [day, month, year]
 # Months are zero-indexed (0-11)
 timestamps = torch.zeros(1, 12, 3, dtype=torch.float32)  # 12 time steps
+
+# Ensure all tensors are on the same device (CPU or GPU)
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model = model.to(device)
+sentinel2_tensor = sentinel2_tensor.to(device)
+sentinel2_mask = sentinel2_mask.to(device)
+timestamps = timestamps.to(device)
 
 # Create input sample
 sample = MaskedOlmoEarthSample(
