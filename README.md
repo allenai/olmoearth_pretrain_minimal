@@ -141,8 +141,13 @@ sample = MaskedOlmoEarthSample(
 )
 
 # Run inference
+# Option 1: Access encoder directly
 with torch.no_grad():
-    output = model.model.encoder(sample, patch_size=8, input_res=10)
+    output = model.encoder(sample, patch_size=8, input_res=10)
+
+# Option 2: Use the full model forward pass (encoder + decoder)
+# with torch.no_grad():
+#     latent, decoded, latent_projected, reconstructed, extra_metrics = model(sample, patch_size=8)
 ```
 
 ### Expected Band Orders
