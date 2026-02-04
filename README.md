@@ -58,7 +58,6 @@ model = load_model_from_id(ModelID.OLMOEARTH_V1_BASE, load_weights=True)
 model_with_weights = load_model_from_id(ModelID.OLMOEARTH_V1_NANO, load_weights=True)
 ```
 
-
 ### Direct Model Initialization (Custom Configuration)
 
 For custom configurations (e.g., custom modalities), you can directly instantiate the model class:
@@ -92,7 +91,83 @@ weights = torch.load("path/to/weights.pth")
 model.load_state_dict(weights)
 ```
 
+### Data Normalization
+
+The model expects normalized input data. Use the `Normalizer` class to normalize your data before passing it to the model.
+
+**Important:** Data must be provided with bands in the specific order expected by each modality. See the band order section below.
+
+### Sample Code
+
+```python
+import torch
+import numpy as np
+
+from olmoearth_pretrain_minimal import load_model_from_id, ModelID, Normalizer
+from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.constants import Modality
+from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.datatypes import MaskedOlmoEarthSample
+
+# Initialize normalizer
+normalizer = Normalizer(std_multiplier=2.0)
+
+# Prepare Sentinel-2 L2A data: (batch, height, width, time, bands)
+# Bands must match Modality.SENTINEL2_L2A.band_order (12 bands)
+sentinel2_data = np.random.rand(1, 128, 128, 12, 12).astype(np.float32)
+
+# Normalize the data
+normalized_sentinel2 = normalizer.normalize(Modality.SENTINEL2_L2A, sentinel2_data)
+
+model = load_model_from_id(ModelID.OLMOEARTH_V1_BASE, load_weights=True)
+model.eval()
+
+# Create minimal sample (timestamps required, month must be long for embedding)
+timestamps = torch.zeros(1, 12, 3, dtype=torch.long)
+timestamps[:, :, 1] = torch.arange(12, dtype=torch.long)  # months 0-11
+
+sample = MaskedOlmoEarthSample(
+    timestamps=timestamps,
+    sentinel2_l2a=torch.from_numpy(normalized_sentinel2).float(),
+    sentinel2_l2a_mask=torch.zeros(1, 128, 128, 12, dtype=torch.long),
+)
+
+with torch.no_grad():
+    output = model.encoder(sample, patch_size=8, input_res=10, fast_pass=True)
+```
+
+### Expected Band Orders
+
+The model expects data with bands in a specific order for each modality. Use `Modality.<MODALITY_NAME>.band_order` to get the correct order:
+
+```python
+from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.constants import Modality
+
+# Sentinel-2 L2A band order (12 bands)
+print(Modality.SENTINEL2_L2A.band_order)
+# ['B02', 'B03', 'B04', 'B08', 'B05', 'B06', 'B07', 'B8A', 'B11', 'B12', 'B01', 'B09']
+
+# Sentinel-1 band order (2 bands)
+print(Modality.SENTINEL1.band_order)
+# ['vv', 'vh']
+
+# Landsat band order (11 bands)
+print(Modality.LANDSAT.band_order)
+# ['B8', 'B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B9', 'B10', 'B11']
+
+# WorldCover band order (1 band)
+print(Modality.WORLDCOVER.band_order)
+# ['B1']
+
+# SRTM band order (1 band)
+print(Modality.SRTM.band_order)
+# ['srtm']
+```
+
+**Key points:**
+- The last dimension of your data array must match the band order exactly
+- For multitemporal modalities (Sentinel-2, Sentinel-1, Landsat), data shape is `(batch, height, width, time, bands)`
+- For single-temporal modalities (WorldCover, SRTM, etc.), data shape is `(batch, height, width, bands)`
+
 ### Note
 
-For the full package with training and evaluation capabilities, see the main `olmoearth_pretrain` package.
+For the full package with training and evaluation capabilities, see the main [`olmoearth_pretrain`](https://github.com/allenai/olmoearth_pretrain) package.
 
