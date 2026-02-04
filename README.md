@@ -1,6 +1,6 @@
 # OlmoEarth Pretrain Minimal
 
-A minimal package for loading and initializing OlmoEarth v1 models. This package contains only the code necessary to load models from Hugging Face or initialize them with random weights, without training or evaluation dependencies.
+A minimal package for loading and initializing OlmoEarth models. This package contains only the code necessary to load models from Hugging Face or initialize them with random weights, without training or evaluation dependencies.
 
 
 ## Installation
@@ -29,7 +29,8 @@ uv installs everything into a venv, so to keep using python commands you can act
 
 <img src="https://raw.githubusercontent.com/allenai/olmoearth_pretrain/main/assets/model.png" alt="Model Architecture Diagram" style="width: 800px; margin-left:'auto' margin-right:'auto' display:'block'"/>
 
-The OlmoEarth models are trained on three satellite modalities (Sentinel 2, Sentinel 1 and Landsat) and six derived maps (OpenStreetMap, WorldCover, USDA Cropland Data Layer, SRTM DEM, WRI Canopy Height Map, and WorldCereal).
+The OlmoEarth models are trained on three satellite modalities (Sentinel 2, Sentinel 1 and Landsat) and six derived maps (OpenStreetMap, WorldCover, USDA Cropland Data Layer, SRTM DEM, WRI Canopy Height Map, and WorldCereal). 
+**Note:** The model weights are released under the [OlmoEarth Artifact License](https://github.com/allenai/olmoearth_pretrain/blob/main/LICENSE)
 | Model Size | Weights | Encoder Params | Decoder Params |
 | --- | --- | --- | --- |
 | Nano | [link](https://huggingface.co/allenai/OlmoEarth-v1-Nano) | 1.4M | 800K |
@@ -55,7 +56,7 @@ from olmoearth_pretrain_minimal import ModelID, load_model_from_id
 model = load_model_from_id(ModelID.OLMOEARTH_V1_BASE, load_weights=True)
 
 # Load with randomly initialized weights 
-model_with_weights = load_model_from_id(ModelID.OLMOEARTH_V1_NANO, load_weights=True)
+model_with_weights = load_model_from_id(ModelID.OLMOEARTH_V1_NANO, load_weights=False)
 ```
 
 ### Direct Model Initialization (Custom Configuration)
@@ -95,7 +96,7 @@ model.load_state_dict(weights)
 
 The model expects normalized input data. Use the `Normalizer` class to normalize your data before passing it to the model.
 
-**Important:** Data must be provided with bands in the specific order expected by each modality. See the band order section below.
+**Note:** Data must be provided with bands in the specific order expected by each modality. See the band order section below.
 
 ### Sample Code
 
