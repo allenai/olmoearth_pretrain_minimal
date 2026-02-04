@@ -2,7 +2,6 @@
 
 import json
 import logging
-from enum import Enum
 from importlib.resources import files
 
 import numpy as np
@@ -10,18 +9,6 @@ import numpy as np
 from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.constants import ModalitySpec
 
 logger = logging.getLogger(__name__)
-
-
-def load_predefined_config() -> dict[str, dict[str, dict[str, float]]]:
-    """Load the predefined config.
-
-    The normalization config maps from modality -> band name to a dictionary with min
-    and max keys.
-    """
-    with (
-        files("olmoearth_pretrain_minimal.olmoearth_pretrain_v1.data.norm_configs") / "predefined.json"
-    ).open() as f:
-        return json.load(f)
 
 
 def load_computed_config() -> dict[str, dict]:
@@ -36,99 +23,78 @@ def load_computed_config() -> dict[str, dict]:
         return json.load(f)
 
 
-class Strategy(Enum):
-    """The strategy to use for normalization."""
-
-    # Whether to use predefined or computed values for normalization
-    PREDEFINED = "predefined"
-    COMPUTED = "computed"
-
-
 class Normalizer:
-    """Normalize the data."""
+    """Normalize data using computed mean and standard deviation values.
+
+    The normalizer uses pre-computed statistics from the training dataset to normalize
+    input data. Values are normalized to a range based on mean ± (std_multiplier * std),
+    which typically covers ~90% of the data distribution.
+
+    Example:
+        >>> from olmoearth_pretrain_minimal import Normalizer
+        >>> from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.constants import Modality
+        >>> import numpy as np
+        >>>
+        >>> normalizer = Normalizer(std_multiplier=2.0)
+        >>> sentinel2_modality = Modality.SENTINEL2_L2A
+        >>> # Data shape: (batch, height, width, time, bands)
+        >>> # Bands must be in order: ['B02', 'B03', 'B04', 'B08', 'B05', 'B06', 'B07', 'B8A', 'B11', 'B12', 'B01', 'B09']
+        >>> data = np.random.rand(1, 128, 128, 12, 12).astype(np.float32)
+        >>> normalized_data = normalizer.normalize(sentinel2_modality, data)
+    """
 
     def __init__(
         self,
-        strategy: Strategy,
-        std_multiplier: float | None = 2,
+        std_multiplier: float = 2.0,
     ) -> None:
         """Initialize the normalizer.
 
         Args:
-            strategy: The strategy to use for normalization (predefined or computed).
-            std_multiplier: Optional, only for strategy COMPUTED.
-                            The multiplier for the standard deviation when using computed values.
+            std_multiplier: The multiplier for the standard deviation when computing
+                the normalization range. Default is 2.0, which covers approximately
+                95% of the data (assuming normal distribution). The normalization
+                range is [mean - std_multiplier * std, mean + std_multiplier * std].
+        """
+        self.std_multiplier = std_multiplier
+        self.norm_config = load_computed_config()
+
+    def normalize(self, modality: ModalitySpec, data: np.ndarray) -> np.ndarray:
+        """Normalize the data using computed mean and standard deviation values.
+
+        Args:
+            modality: The ModalitySpec that defines the modality and band order.
+            data: The data to normalize. Shape should be (..., bands) where the last
+                dimension corresponds to bands in the order specified by
+                `modality.band_order`.
 
         Returns:
-            None
+            The normalized data with the same shape as input. Values are normalized
+            to approximately [0, 1] range based on mean ± (std_multiplier * std).
+
+        Raises:
+            ValueError: If a band in the modality's band_order is not found in the
+                normalization config.
         """
-        self.strategy = strategy
-        self.std_multiplier = std_multiplier
-        self.norm_config = self._load_config()
-
-    def _load_config(self) -> dict:
-        """Load the appropriate config based on the modality strategy."""
-        if self.strategy == Strategy.PREDEFINED:
-            return load_predefined_config()
-        elif self.strategy == Strategy.COMPUTED:
-            return load_computed_config()
-        else:
-            raise ValueError(f"Invalid strategy: {self.strategy}")
-
-    def _normalize_predefined(
-        self, modality: ModalitySpec, data: np.ndarray
-    ) -> np.ndarray:
-        """Normalize the data using predefined values."""
-        # When using predefined values, we have the min and max values for each band
+        # Get the band order for this modality
         modality_bands = modality.band_order
         modality_norm_values = self.norm_config[modality.name]
-        min_vals = []
-        max_vals = []
-        for band in modality_bands:
-            if band not in modality_norm_values:
-                raise ValueError(f"Band {band} not found in config")
-            min_val = modality_norm_values[band]["min"]
-            max_val = modality_norm_values[band]["max"]
-            min_vals.append(min_val)
-            max_vals.append(max_val)
-        # The last dimension of data is always the number of bands (channels)
-        return (data - np.array(min_vals)) / (np.array(max_vals) - np.array(min_vals))
-
-    def _normalize_computed(
-        self, modality: ModalitySpec, data: np.ndarray
-    ) -> np.ndarray:
-        """Normalize the data using computed values."""
-        # When using computed values, we compute the mean and std of each band in advance
-        # Then convert the values to min and max values that cover ~90% of the data
-        modality_bands = modality.band_order
-        modality_norm_values = self.norm_config[modality.name]
+        
         mean_vals = []
         std_vals = []
         for band in modality_bands:
             if band not in modality_norm_values:
-                raise ValueError(f"Band {band} not found in config")
+                raise ValueError(
+                    f"Band '{band}' not found in normalization config for modality '{modality.name}'. "
+                    f"Available bands: {list(modality_norm_values.keys())}"
+                )
             mean_val = modality_norm_values[band]["mean"]
             std_val = modality_norm_values[band]["std"]
             mean_vals.append(mean_val)
             std_vals.append(std_val)
+        
+        # Compute min and max values based on mean ± (std_multiplier * std)
         min_vals = np.array(mean_vals) - self.std_multiplier * np.array(std_vals)
         max_vals = np.array(mean_vals) + self.std_multiplier * np.array(std_vals)
+        
+        # Normalize: (data - min) / (max - min)
         return (data - min_vals) / (max_vals - min_vals)  # type: ignore
-
-    def normalize(self, modality: ModalitySpec, data: np.ndarray) -> np.ndarray:
-        """Normalize the data.
-
-        Args:
-            modality: The modality to normalize.
-            data: The data to normalize.
-
-        Returns:
-            The normalized data.
-        """
-        if self.strategy == Strategy.PREDEFINED:
-            return self._normalize_predefined(modality, data)
-        elif self.strategy == Strategy.COMPUTED:
-            return self._normalize_computed(modality, data)
-        else:
-            raise ValueError(f"Invalid strategy: {self.strategy}")
-

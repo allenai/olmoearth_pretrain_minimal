@@ -92,6 +92,93 @@ weights = torch.load("path/to/weights.pth")
 model.load_state_dict(weights)
 ```
 
+### Data Normalization and Inference
+
+The model expects normalized input data. Use the `Normalizer` class to normalize your data before passing it to the model. The normalizer uses pre-computed statistics from the training dataset.
+
+**Important:** Data must be provided with bands in the specific order expected by each modality. See the band order section below.
+
+```python
+from olmoearth_pretrain_minimal import ModelID, load_model_from_id, Normalizer
+from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.constants import Modality
+from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.datatypes import MaskedOlmoEarthSample, MaskValue
+import torch
+import numpy as np
+
+# Load model
+model = load_model_from_id(ModelID.OLMOEARTH_V1_BASE, load_weights=True)
+model.eval()
+
+# Initialize normalizer
+normalizer = Normalizer(std_multiplier=2.0)
+
+# Example: Prepare Sentinel-2 L2A data
+# Data shape: (batch, height, width, time, bands)
+# Bands must be in the order specified by Modality.SENTINEL2_L2A.band_order
+# For Sentinel-2 L2A: ['B02', 'B03', 'B04', 'B08', 'B05', 'B06', 'B07', 'B8A', 'B11', 'B12', 'B01', 'B09'] (12 bands)
+sentinel2_data = np.random.rand(1, 128, 128, 12, 12).astype(np.float32)  # 12 bands for Sentinel-2 L2A
+
+# Normalize the data
+sentinel2_modality = Modality.SENTINEL2_L2A
+normalized_sentinel2 = normalizer.normalize(sentinel2_modality, sentinel2_data)
+
+# Convert to torch tensor
+sentinel2_tensor = torch.from_numpy(normalized_sentinel2)
+
+# Create masks (0 = ONLINE_ENCODER, 1 = TARGET_ENCODER_ONLY, 2 = DECODER, 3 = MISSING)
+# For inference, typically use ONLINE_ENCODER (0) for all valid pixels
+sentinel2_mask = torch.zeros(1, 128, 128, 12, dtype=torch.long)
+
+# Prepare timestamps: [batch, time, 3] where 3 = [day, month, year]
+# Months are zero-indexed (0-11)
+timestamps = torch.zeros(1, 12, 3, dtype=torch.float32)  # 12 time steps
+
+# Create input sample
+sample = MaskedOlmoEarthSample(
+    timestamps=timestamps,
+    sentinel2_l2a=sentinel2_tensor,
+    sentinel2_l2a_mask=sentinel2_mask,
+)
+
+# Run inference
+with torch.no_grad():
+    output = model.model.encoder(sample, patch_size=8, input_res=10)
+```
+
+### Expected Band Orders
+
+The model expects data with bands in a specific order for each modality. Use `Modality.<MODALITY_NAME>.band_order` to get the correct order:
+
+```python
+from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.constants import Modality
+
+# Sentinel-2 L2A band order (12 bands)
+print(Modality.SENTINEL2_L2A.band_order)
+# ['B02', 'B03', 'B04', 'B08', 'B05', 'B06', 'B07', 'B8A', 'B11', 'B12', 'B01', 'B09']
+
+# Sentinel-1 band order (2 bands)
+print(Modality.SENTINEL1.band_order)
+# ['vv', 'vh']
+
+# Landsat band order (11 bands)
+print(Modality.LANDSAT.band_order)
+# ['B8', 'B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B9', 'B10', 'B11']
+
+# WorldCover band order (1 band)
+print(Modality.WORLDCOVER.band_order)
+# ['B1']
+
+# SRTM band order (1 band)
+print(Modality.SRTM.band_order)
+# ['srtm']
+```
+
+**Key points:**
+- The last dimension of your data array must match the band order exactly
+- For multitemporal modalities (Sentinel-2, Sentinel-1, Landsat), data shape is `(batch, height, width, time, bands)`
+- For single-temporal modalities (WorldCover, SRTM, etc.), data shape is `(batch, height, width, bands)`
+- Always normalize data using the `Normalizer` before passing to the model
+
 ### Note
 
 For the full package with training and evaluation capabilities, see the main `olmoearth_pretrain` package.
