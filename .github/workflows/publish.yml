@@ -42,7 +42,11 @@ jobs:
           fi
           echo "Version check passed: $TAG_VERSION"
 
-      - run: uv build
+      - name: Build distribution
+        run: |
+          # uv build fails with conflicting torch indexes, so use build directly
+          python3 -m pip install --upgrade build
+          python3 -m build
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
