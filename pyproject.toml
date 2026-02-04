@@ -36,6 +36,9 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 include = ["olmoearth_pretrain_minimal*"]
 
+[tool.setuptools.package-data]
+"olmoearth_pretrain_minimal.olmoearth_pretrain_v1.data.norm_configs" = ["*.json"]
+
 [tool.uv.sources]
 torch = [
     { index = "pytorch-cpu", extra = "torch-cpu" },
