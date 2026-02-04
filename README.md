@@ -58,7 +58,6 @@ model = load_model_from_id(ModelID.OLMOEARTH_V1_BASE, load_weights=True)
 model_with_weights = load_model_from_id(ModelID.OLMOEARTH_V1_NANO, load_weights=True)
 ```
 
-
 ### Direct Model Initialization (Custom Configuration)
 
 For custom configurations (e.g., custom modalities), you can directly instantiate the model class:
@@ -98,6 +97,8 @@ The model expects normalized input data. Use the `Normalizer` class to normalize
 
 **Important:** Data must be provided with bands in the specific order expected by each modality. See the band order section below.
 
+### Sample Code
+
 ```python
 import torch
 import numpy as np
@@ -132,7 +133,6 @@ sample = MaskedOlmoEarthSample(
 with torch.no_grad():
     output = model.encoder(sample, patch_size=8, input_res=10, fast_pass=True)
 ```
-```
 
 ### Expected Band Orders
 
@@ -166,9 +166,8 @@ print(Modality.SRTM.band_order)
 - The last dimension of your data array must match the band order exactly
 - For multitemporal modalities (Sentinel-2, Sentinel-1, Landsat), data shape is `(batch, height, width, time, bands)`
 - For single-temporal modalities (WorldCover, SRTM, etc.), data shape is `(batch, height, width, bands)`
-- Always normalize data using the `Normalizer` before passing to the model
 
 ### Note
 
-For the full package with training and evaluation capabilities, see the main `olmoearth_pretrain` package.
+For the full package with training and evaluation capabilities, see the main [`olmoearth_pretrain`](https://github.com/allenai/olmoearth_pretrain) package.
 
