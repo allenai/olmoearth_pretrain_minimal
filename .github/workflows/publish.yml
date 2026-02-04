@@ -29,11 +29,11 @@ jobs:
       - name: Verify version matches tag
         run: |
           if [ -n "${{ github.event.inputs.tag }}" ]; then
-            TAG_VERSION=${TAG#v}
             TAG="${{ github.event.inputs.tag }}"
+            TAG_VERSION=${TAG#v}
           else
-            TAG_VERSION=${GITHUB_REF#refs/tags/v}
             TAG=${GITHUB_REF#refs/tags/}
+            TAG_VERSION=${TAG#v}
           fi
           TOML_VERSION=$(uv run python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
           if [ "$TAG_VERSION" != "$TOML_VERSION" ]; then
