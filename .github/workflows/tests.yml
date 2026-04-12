@@ -33,7 +33,7 @@ jobs:
         uv venv
         source .venv/bin/activate
         # Install torch from CPU index
-        uv pip install --index-url https://download.pytorch.org/whl/cpu "torch>=2.8,<2.9" "torchvision>=0.23,<1"
+        uv pip install --index-url https://download.pytorch.org/whl/cpu "torch>=2.8"
         # Install base dependencies
         uv pip install "einops>=0.7.0" "huggingface_hub" "numpy>=1.26.4" "universal-pathlib>=0.2.5"
         # Install dev dependencies
