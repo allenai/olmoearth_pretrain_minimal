@@ -1277,7 +1277,7 @@ class Encoder(FlexiVitBase):
         qk_norm: bool = False,
         log_token_norm_stats: bool = False,
         tokenization_config: TokenizationConfig | None = None,
-        use_linear_patch_embed: bool = True,
+        use_linear_patch_embed: bool = False,
         band_dropout_rate: float = 0.0,
         random_band_dropout: bool = False,
         band_dropout_modalities: list[str] | None = None,
@@ -2217,7 +2217,7 @@ class EncoderConfig(Config):
     qk_norm: bool = False
     log_token_norm_stats: bool = False
     tokenization_config: TokenizationConfig | None = None
-    use_linear_patch_embed: bool = True
+    use_linear_patch_embed: bool = False
     band_dropout_rate: float = 0.0
     random_band_dropout: bool = False
     band_dropout_modalities: list[str] | None = None
