@@ -32,19 +32,8 @@ include = ["olmoearth_pretrain_minimal*"]
 [tool.setuptools.package-data]
 "olmoearth_pretrain_minimal.olmoearth_pretrain_v1.data.norm_configs" = ["*.json"]
 
-[[tool.uv.index]]
-name = "pytorch-cpu"
-url = "https://download.pytorch.org/whl/cpu"
-explicit = true
-
-[[tool.uv.index]]
-name = "pytorch-cu128"
-url = "https://download.pytorch.org/whl/cu128"
-explicit = true
-
 [tool.pytest.ini_options]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
 ]
 testpaths = ["tests"]
-
