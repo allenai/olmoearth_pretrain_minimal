@@ -52,6 +52,14 @@ pytorch-triton = [
     { index = "pytorch-cu128", extra = "torch-cu128" },
 ]
 
+[tool.uv]
+conflicts = [
+    [
+        { extra = "torch-cpu" },
+        { extra = "torch-cu128" },
+    ],
+]
+
 [[tool.uv.index]]
 name = "pytorch-cpu"
 url = "https://download.pytorch.org/whl/cpu"
