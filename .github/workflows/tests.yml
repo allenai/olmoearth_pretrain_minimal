@@ -28,18 +28,10 @@ jobs:
 
     - name: Install dependencies
       run: |
-        # Install with CPU-only torch (suitable for CI)
         # Use uv pip install to bypass uv.sources configuration that causes conflicts
         uv venv
         source .venv/bin/activate
-        # Install torch from CPU index
-        uv pip install --index-url https://download.pytorch.org/whl/cpu "torch>=2.8"
-        # Install base dependencies
-        uv pip install "einops>=0.7.0" "huggingface_hub" "numpy>=1.26.4" "universal-pathlib>=0.2.5"
-        # Install dev dependencies
-        uv pip install "pytest>=7.0.0"
-        # Install the project itself
-        uv pip install -e .
+        uv sync
 
     - name: Run tests (without weights)
       run: |
