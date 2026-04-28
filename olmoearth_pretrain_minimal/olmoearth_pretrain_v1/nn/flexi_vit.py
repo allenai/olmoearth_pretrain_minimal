@@ -1755,9 +1755,7 @@ class Encoder(FlexiVitBase):
         if fast_pass and token_exit_cfg is not None:
             raise ValueError("token_exit_cfg cannot be set when fast_pass is True")
 
-        patchified_tokens_and_masks = self.patch_embeddings.forward(
-            x, patch_size, fast_pass=fast_pass
-        )
+        patchified_tokens_and_masks = self.patch_embeddings.forward(x, patch_size)
         if token_exit_cfg is None or any(
             [exit_depth > 0 for exit_depth in token_exit_cfg.values()]
         ):
