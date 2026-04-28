@@ -10,7 +10,7 @@ import torch
 
 
 @pytest.mark.slow
-def test_load_nano_model_no_weights():
+def test_load_nano_model_with_weights():
     """Test loading nano model without weights."""
     opm_model = opm.load_model_from_id(opm.ModelID.OLMOEARTH_V1_NANO, load_weights=True)
     assert opm_model is not None
@@ -34,6 +34,7 @@ def test_load_nano_model_no_weights():
         "timestamps": timestamps,
     }
     opm_sample = opm_MaskedOlmoEarthSample(**masked_sample_dict)
+    opm_model.eval()
     opm_output = opm_model(opm_sample, patch_size=patch_size)
 
     # now lets do the same for an olmoearth_pretrain model
@@ -43,5 +44,6 @@ def test_load_nano_model_no_weights():
     assert op_param_count == opm_param_count
 
     op_sample = opMaskedOlmoEarthSample(**masked_sample_dict)
+    op_model.eval()
     op_output = op_model(op_sample, patch_size=patch_size)
     assert (op_output[0].sentinel2_l2a == opm_output[0].sentinel2_l2a).all()
