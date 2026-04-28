@@ -10,7 +10,7 @@ on:
 
 jobs:
   test:
-    name: Test with torch-cpu
+    name: Tests
     runs-on: ubuntu-latest
 
     steps:
@@ -28,11 +28,8 @@ jobs:
 
     - name: Install dependencies
       run: |
-        # Install with CPU-only torch (suitable for CI)
         uv sync --python 3.12 --extra dev
         source .venv/bin/activate
-        # Install the project itself
-        uv pip install -e .
 
     - name: Run tests (without weights)
       run: |
