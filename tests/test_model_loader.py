@@ -4,10 +4,7 @@ import pytest
 from pathlib import Path
 
 from olmoearth_pretrain_minimal import ModelID, load_model_from_id, OlmoEarthPretrain_v1, load_model_from_path
-from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.datatypes import (
-    MaskedOlmoEarthSample,
-    MaskValue,
-)
+from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.datatypes import MaskedOlmoEarthSample
 import torch
 
 ARTIFACTS = Path(__file__).parent / "artifacts"
