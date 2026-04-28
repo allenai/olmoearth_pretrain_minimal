@@ -13,13 +13,13 @@ dependencies = [
     "huggingface_hub",
     "numpy>=1.26.4",
     "universal-pathlib>=0.2.5",
-    "torch>=2.8,<2.9",
-    "torchvision>=0.23,<1",
+    "torch>=2.7,<2.9",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0.0",
+    "olmoearth-pretrain==0.1.0",
 ]
 
 [build-system]
