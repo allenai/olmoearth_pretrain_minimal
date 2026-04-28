@@ -1,6 +1,6 @@
 [project]
 name = "olmoearth-pretrain-minimal"
-version = "0.0.2"
+version = "0.0.3"
 description = "Minimal package for loading and initializing OlmoEarth models"
 authors = [
     { name = "OlmoEarth Team" },
