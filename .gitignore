@@ -1,5 +1,5 @@
 __pycache__/
-**.egg-info
+**/*.egg-info/
 # we ignore the lockfile since
 # we have gpu and cpu installations.
 uv.lock
