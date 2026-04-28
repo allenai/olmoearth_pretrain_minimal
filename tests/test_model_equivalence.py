@@ -10,7 +10,7 @@ import torch
 
 
 @pytest.mark.slow
-def test_load_nano_model_with_weights():
+def test_nano_model_with_weights_equivalence():
     """Test loading nano model without weights."""
     opm_model = opm.load_model_from_id(opm.ModelID.OLMOEARTH_V1_NANO, load_weights=True)
     assert opm_model is not None
