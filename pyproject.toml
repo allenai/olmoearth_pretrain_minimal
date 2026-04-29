@@ -1,19 +1,19 @@
 [project]
 name = "olmoearth-pretrain-minimal"
-version = "0.0.3"
+version = "0.0.4"
 description = "Minimal package for loading and initializing OlmoEarth models"
 authors = [
     { name = "OlmoEarth Team" },
 ]
 readme = "README.md"
 license = {file = "LICENSE"}
-requires-python = ">=3.11, <3.14"
+requires-python = ">=3.11"
 dependencies = [
     "einops>=0.7.0",
     "huggingface_hub",
     "numpy>=1.26.4",
     "universal-pathlib>=0.2.5",
-    "torch>=2.7,<2.9",
+    "torch>=2.7",
 ]
 
 [project.optional-dependencies]
