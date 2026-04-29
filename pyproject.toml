@@ -1,6 +1,6 @@
 [project]
 name = "olmoearth-pretrain-minimal"
-version = "0.0.2"
+version = "0.0.3"
 description = "Minimal package for loading and initializing OlmoEarth models"
 authors = [
     { name = "OlmoEarth Team" },
@@ -14,11 +14,13 @@ dependencies = [
     "numpy>=1.26.4",
     "torch>=2.8",
     "universal-pathlib>=0.2.5",
+    "torch>=2.7,<2.9",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0.0",
+    "olmoearth-pretrain==0.1.0",
 ]
 
 [build-system]
@@ -31,6 +33,7 @@ include = ["olmoearth_pretrain_minimal*"]
 [tool.setuptools.package-data]
 "olmoearth_pretrain_minimal.olmoearth_pretrain_v1.data.norm_configs" = ["*.json"]
 
+<<<<<<< HEAD
 [tool.uv.sources]
 torch = [
     { index = "pytorch-cpu", extra = "torch-cpu" },
@@ -47,9 +50,10 @@ name = "pytorch-cu128"
 url = "https://download.pytorch.org/whl/cu128"
 explicit = true
 
+=======
+>>>>>>> main
 [tool.pytest.ini_options]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
 ]
 testpaths = ["tests"]
-

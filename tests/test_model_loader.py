@@ -1,8 +1,14 @@
 """Tests for model loading functionality."""
 
 import pytest
+from pathlib import Path
 
-from olmoearth_pretrain_minimal import ModelID, load_model_from_id, OlmoEarthPretrain_v1
+from olmoearth_pretrain_minimal import ModelID, load_model_from_id, OlmoEarthPretrain_v1, load_model_from_path
+from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.datatypes import MaskedOlmoEarthSample
+import torch
+
+ARTIFACTS = Path(__file__).parent / "artifacts"
+assert ARTIFACTS.exists()
 
 
 def test_load_nano_model_no_weights():
@@ -12,6 +18,24 @@ def test_load_nano_model_no_weights():
     param_count = sum(p.numel() for p in model.parameters())
     assert param_count > 0
 
+    # also test the forward functionality works
+    B, H, W, T, num_s2_bands = 1, 16, 16, 3, 12
+    sentinel2_l2a = torch.randn((B, H, W, T, num_s2_bands))
+    sentinel2_l2a_mask = torch.zeros((B, H, W, T, num_s2_bands), dtype=torch.long)
+    patch_size = 4
+
+    days = torch.randint(0, 25, (B, T, 1), dtype=torch.long)
+    months = torch.randint(0, 12, (B, T, 1), dtype=torch.long)
+    years = torch.randint(2018, 2020, (B, T, 1), dtype=torch.long)
+    timestamps = torch.cat([days, months, years], dim=-1)  # Shape: (B, T, 3)
+
+    masked_sample_dict = {
+        "sentinel2_l2a": sentinel2_l2a,
+        "sentinel2_l2a_mask": sentinel2_l2a_mask,
+        "timestamps": timestamps,
+    }
+    sample = MaskedOlmoEarthSample(**masked_sample_dict)
+    _ = model(sample, patch_size=patch_size)
 
 def test_load_tiny_model_no_weights():
     """Test loading tiny model without weights."""
@@ -98,3 +122,28 @@ def test_invalid_model_size():
     with pytest.raises(ValueError, match="Invalid model_size"):
         OlmoEarthPretrain_v1(model_size="invalid")
 
+def test_load_v1_1_config():
+    """Test loading nano model from config."""
+    model = load_model_from_path(model_path=ARTIFACTS / "v1_1_nano", load_weights=False)
+    assert model is not None
+    param_count = sum(p.numel() for p in model.parameters())
+    assert param_count > 0
+
+    # also test the forward functionality works
+    B, H, W, T, num_s2_bands = 1, 16, 16, 3, 12
+    sentinel2_l2a = torch.randn((B, H, W, T, num_s2_bands))
+    sentinel2_l2a_mask = torch.zeros((B, H, W, T, num_s2_bands), dtype=torch.long)
+    patch_size = 4
+
+    days = torch.randint(0, 25, (B, T, 1), dtype=torch.long)
+    months = torch.randint(0, 12, (B, T, 1), dtype=torch.long)
+    years = torch.randint(2018, 2020, (B, T, 1), dtype=torch.long)
+    timestamps = torch.cat([days, months, years], dim=-1)  # Shape: (B, T, 3)
+
+    masked_sample_dict = {
+        "sentinel2_l2a": sentinel2_l2a,
+        "sentinel2_l2a_mask": sentinel2_l2a_mask,
+        "timestamps": timestamps,
+    }
+    sample = MaskedOlmoEarthSample(**masked_sample_dict)
+    _ = model(sample, patch_size=patch_size)

@@ -23,10 +23,7 @@ To install dependencies:
 ```
 git clone git@github.com:allenai/olmoearth_pretrain_minimal.git
 cd olmoearth_pretrain_minimal
-# Install with CPU-only PyTorch (works on all platforms including Linux)
-uv sync --locked --python 3.12 --extra torch-cpu
-# Or install with CUDA 12.8 PyTorch
-uv sync --locked --python 3.12 --extra torch-cu128
+uv sync
 ```
 uv installs everything into a venv, so to keep using python commands you can activate uv's venv: `source .venv/bin/activate`. Otherwise, swap to `uv run python`.
 
@@ -37,7 +34,7 @@ uv installs everything into a venv, so to keep using python commands you can act
 
 <img src="https://raw.githubusercontent.com/allenai/olmoearth_pretrain/main/assets/model.png" alt="Model Architecture Diagram" style="width: 800px; margin-left:'auto' margin-right:'auto' display:'block'"/>
 
-The OlmoEarth models are trained on three satellite modalities (Sentinel 2, Sentinel 1 and Landsat) and six derived maps (OpenStreetMap, WorldCover, USDA Cropland Data Layer, SRTM DEM, WRI Canopy Height Map, and WorldCereal). 
+The OlmoEarth models are trained on three satellite modalities (Sentinel 2, Sentinel 1 and Landsat) and six derived maps (OpenStreetMap, WorldCover, USDA Cropland Data Layer, SRTM DEM, WRI Canopy Height Map, and WorldCereal).
 
 **Note:** The model weights are released under the [OlmoEarth Artifact License](https://github.com/allenai/olmoearth_pretrain/blob/main/LICENSE)
 | Model Size | Weights | Encoder Params | Decoder Params |
@@ -64,7 +61,7 @@ from olmoearth_pretrain_minimal import ModelID, load_model_from_id
 # - ModelID.OLMOEARTH_V1_LARGE - 308M encoder params, 53M decoder params
 model = load_model_from_id(ModelID.OLMOEARTH_V1_BASE, load_weights=True)
 
-# Load with randomly initialized weights 
+# Load with randomly initialized weights
 model_with_weights = load_model_from_id(ModelID.OLMOEARTH_V1_NANO, load_weights=False)
 ```
 
