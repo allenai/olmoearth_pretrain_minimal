@@ -13,7 +13,7 @@ dependencies = [
     "huggingface_hub",
     "numpy>=1.26.4",
     "universal-pathlib>=0.2.5",
-    "torch>=2.7,<2.9",
+    "torch>=2.7",
 ]
 
 [project.optional-dependencies]
