@@ -48,7 +48,7 @@ def _make_sample(dtype: torch.dtype) -> MaskedOlmoEarthSample:
     )
 
 
-@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
 def test_nano_encoder_forward_low_precision(dtype: torch.dtype) -> None:
     """Encoder forward pass must not raise a dtype mismatch in fp16 / bf16."""
     model = OlmoEarthPretrain_v1(
