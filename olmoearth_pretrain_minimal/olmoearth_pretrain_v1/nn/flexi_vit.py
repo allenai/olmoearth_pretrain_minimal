@@ -948,7 +948,9 @@ class CompositeEncodings(nn.Module):
                 raise ValueError(f"Unsupported tokens shape: {modality_tokens.shape}")
 
         device = modality_tokens.device
-        modality_embed = torch.zeros(modality_tokens.shape, device=device)
+        modality_embed = torch.zeros(
+            modality_tokens.shape, device=device, dtype=modality_tokens.dtype
+        )
         n = self.embedding_dim_per_embedding_type
         actual_bandsets = modality_tokens.shape[-2]
 
