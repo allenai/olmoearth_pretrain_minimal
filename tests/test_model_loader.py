@@ -17,6 +17,7 @@ def test_load_nano_model_no_weights():
     assert model is not None
     param_count = sum(p.numel() for p in model.parameters())
     assert param_count > 0
+    assert model.encoder.patch_embeddings.band_dropout_rate == 0
 
     # also test the forward functionality works
     B, H, W, T, num_s2_bands = 1, 16, 16, 3, 12
@@ -43,6 +44,7 @@ def test_load_tiny_model_no_weights():
     assert model is not None
     param_count = sum(p.numel() for p in model.parameters())
     assert param_count > 0
+    assert model.encoder.patch_embeddings.band_dropout_rate == 0
 
 
 def test_load_base_model_no_weights():
@@ -51,6 +53,7 @@ def test_load_base_model_no_weights():
     assert model is not None
     param_count = sum(p.numel() for p in model.parameters())
     assert param_count > 0
+    assert model.encoder.patch_embeddings.band_dropout_rate == 0
 
 
 def test_load_large_model_no_weights():
@@ -59,6 +62,7 @@ def test_load_large_model_no_weights():
     assert model is not None
     param_count = sum(p.numel() for p in model.parameters())
     assert param_count > 0
+    assert model.encoder.patch_embeddings.band_dropout_rate == 0
 
 
 @pytest.mark.slow
@@ -68,6 +72,7 @@ def test_load_nano_model_with_weights():
     assert model is not None
     param_count = sum(p.numel() for p in model.parameters())
     assert param_count > 0
+    assert model.encoder.patch_embeddings.band_dropout_rate == 0
 
 
 @pytest.mark.slow
@@ -77,6 +82,7 @@ def test_load_tiny_model_with_weights():
     assert model is not None
     param_count = sum(p.numel() for p in model.parameters())
     assert param_count > 0
+    assert model.encoder.patch_embeddings.band_dropout_rate == 0
 
 
 @pytest.mark.slow
@@ -86,6 +92,7 @@ def test_load_base_model_with_weights():
     assert model is not None
     param_count = sum(p.numel() for p in model.parameters())
     assert param_count > 0
+    assert model.encoder.patch_embeddings.band_dropout_rate == 0
 
 
 @pytest.mark.slow
@@ -95,6 +102,7 @@ def test_load_large_model_with_weights():
     assert model is not None
     param_count = sum(p.numel() for p in model.parameters())
     assert param_count > 0
+    assert model.encoder.patch_embeddings.band_dropout_rate == 0
 
 
 def test_direct_initialization():
@@ -106,6 +114,7 @@ def test_direct_initialization():
     assert model is not None
     param_count = sum(p.numel() for p in model.parameters())
     assert param_count > 0
+    assert model.encoder.patch_embeddings.band_dropout_rate == 0
 
 
 def test_direct_initialization_all_sizes():
@@ -115,6 +124,7 @@ def test_direct_initialization_all_sizes():
         assert model is not None
         param_count = sum(p.numel() for p in model.parameters())
         assert param_count > 0
+        assert model.encoder.patch_embeddings.band_dropout_rate == 0
 
 
 def test_invalid_model_size():
@@ -147,3 +157,4 @@ def test_load_v1_1_config():
     }
     sample = MaskedOlmoEarthSample(**masked_sample_dict)
     _ = model(sample, patch_size=patch_size)
+    assert model.encoder.patch_embeddings.band_dropout_rate == 0.2
