@@ -157,4 +157,7 @@ def test_load_v1_1_config():
     }
     sample = MaskedOlmoEarthSample(**masked_sample_dict)
     _ = model(sample, patch_size=patch_size)
-    assert model.encoder.patch_embeddings.band_dropout_rate == 0.2
+
+    # band dropout will be off by default. To enable it, call
+    # model.encoder.enable_band_dropout()
+    assert model.encoder.patch_embeddings.band_dropout_rate == 0.0
