@@ -1345,13 +1345,16 @@ class Encoder(FlexiVitBase):
         self.band_dropout_rate = band_dropout_rate
         self.random_band_dropout = random_band_dropout
         self.band_dropout_modalities = band_dropout_modalities
+        # Configured rate; remains inactive until ``enable_band_dropout`` is called.
+        # Default is disabled so fine-tuning never applies band dropout unless the
+        # caller (e.g. pretraining online encoder) explicitly enables it.
         self.patch_embeddings = MultiModalPatchEmbeddings(
             self.supported_modality_names,
             self.max_patch_size,
             self.embedding_size,
             tokenization_config=self.tokenization_config,
             use_linear_patch_embed=self.use_linear_patch_embed,
-            band_dropout_rate=self.band_dropout_rate,
+            band_dropout_rate=0.0,
             random_band_dropout=self.random_band_dropout,
             band_dropout_modalities=self.band_dropout_modalities,
         )
@@ -1368,6 +1371,14 @@ class Encoder(FlexiVitBase):
                 p.requires_grad = False
         if self.has_register_tokens:
             self._init_register_tokens()
+
+    def enable_band_dropout(self) -> None:
+        """Enable band dropout using the configured rate.
+
+        Band dropout is disabled by default so it never activates during
+        fine-tuning. Call this only on the online encoder during pretraining.
+        """
+        self.patch_embeddings.band_dropout_rate = self.band_dropout_rate
 
     def _init_register_tokens(self) -> None:
         """Initialize the register tokens."""
