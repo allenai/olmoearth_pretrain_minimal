@@ -6,7 +6,9 @@ from importlib.resources import files
 
 import numpy as np
 
-from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.constants import ModalitySpec
+from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.constants import (
+    ModalitySpec,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +20,8 @@ def load_computed_config() -> dict[str, dict]:
     and std keys.
     """
     with (
-        files("olmoearth_pretrain_minimal.olmoearth_pretrain_v1.data.norm_configs") / "computed.json"
+        files("olmoearth_pretrain_minimal.olmoearth_pretrain_v1.data.norm_configs")
+        / "computed.json"
     ).open() as f:
         return json.load(f)
 

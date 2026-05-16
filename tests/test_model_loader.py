@@ -1,11 +1,19 @@
 """Tests for model loading functionality."""
 
-import pytest
 from pathlib import Path
 
-from olmoearth_pretrain_minimal import ModelID, load_model_from_id, OlmoEarthPretrain_v1, load_model_from_path
-from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.datatypes import MaskedOlmoEarthSample
+import pytest
 import torch
+
+from olmoearth_pretrain_minimal import (
+    ModelID,
+    OlmoEarthPretrain_v1,
+    load_model_from_id,
+    load_model_from_path,
+)
+from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.datatypes import (
+    MaskedOlmoEarthSample,
+)
 
 ARTIFACTS = Path(__file__).parent / "artifacts"
 assert ARTIFACTS.exists()
@@ -36,6 +44,7 @@ def test_load_nano_model_no_weights() -> None:
     }
     sample = MaskedOlmoEarthSample(**masked_sample_dict)
     _ = model(sample, patch_size=patch_size)
+
 
 def test_load_tiny_model_no_weights() -> None:
     """Test loading tiny model without weights."""
@@ -111,7 +120,7 @@ def test_direct_initialization() -> None:
 def test_direct_initialization_all_sizes() -> None:
     """Test direct model initialization for all model sizes."""
     for model_size in ["nano", "tiny", "base", "large"]:
-        model = OlmoEarthPretrain_v1(model_size=model_size)
+        model = OlmoEarthPretrain_v1(model_size=model_size)  # type: ignore[arg-type]
         assert model is not None
         param_count = sum(p.numel() for p in model.parameters())
         assert param_count > 0
@@ -120,7 +129,8 @@ def test_direct_initialization_all_sizes() -> None:
 def test_invalid_model_size() -> None:
     """Test that invalid model size raises an error."""
     with pytest.raises(ValueError, match="Invalid model_size"):
-        OlmoEarthPretrain_v1(model_size="invalid")
+        OlmoEarthPretrain_v1(model_size="invalid")  # type: ignore[arg-type]
+
 
 def test_load_v1_1_config() -> None:
     """Test loading nano model from config."""

@@ -24,7 +24,10 @@ Example:
 
 from dataclasses import dataclass, field
 
-from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.constants import Modality, ModalitySpec
+from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.constants import (
+    Modality,
+    ModalitySpec,
+)
 
 
 @dataclass

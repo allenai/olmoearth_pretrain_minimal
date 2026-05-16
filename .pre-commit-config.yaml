@@ -54,13 +54,10 @@ repos:
           - -s
           - B101,B311,B614
 
-  - repo: local
+  - repo: https://github.com/econchick/interrogate
+    rev: 1.7.0
     hooks:
       - id: interrogate
-        name: interrogate
-        language: system
-        entry: uv run interrogate
-        types: [python]
         args:
           - --ignore-init-method
           - --ignore-init-module
