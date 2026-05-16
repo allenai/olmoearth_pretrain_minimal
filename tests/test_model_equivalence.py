@@ -20,6 +20,7 @@ def test_nano_model_with_weights_equivalence() -> None:
     assert opm_model is not None
     opm_param_count = sum(p.numel() for p in opm_model.parameters())
     assert opm_param_count > 0
+    assert opm_model.encoder.patch_embeddings.band_dropout_rate == 0
 
     # also test the forward functionality works
     B, H, W, T, num_s2_bands = 1, 16, 16, 3, 12
