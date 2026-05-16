@@ -177,4 +177,3 @@ print(Modality.SRTM.band_order)
 ### Note
 
 For the full package with training and evaluation capabilities, see the main [`olmoearth_pretrain`](https://github.com/allenai/olmoearth_pretrain) package.
-

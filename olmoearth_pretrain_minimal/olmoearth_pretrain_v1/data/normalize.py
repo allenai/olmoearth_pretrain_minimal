@@ -78,7 +78,7 @@ class Normalizer:
         # Get the band order for this modality
         modality_bands = modality.band_order
         modality_norm_values = self.norm_config[modality.name]
-        
+
         mean_vals = []
         std_vals = []
         for band in modality_bands:
@@ -91,10 +91,10 @@ class Normalizer:
             std_val = modality_norm_values[band]["std"]
             mean_vals.append(mean_val)
             std_vals.append(std_val)
-        
+
         # Compute min and max values based on mean ± (std_multiplier * std)
         min_vals = np.array(mean_vals) - self.std_multiplier * np.array(std_vals)
         max_vals = np.array(mean_vals) + self.std_multiplier * np.array(std_vals)
-        
+
         # Normalize: (data - min) / (max - min)
         return (data - min_vals) / (max_vals - min_vals)  # type: ignore

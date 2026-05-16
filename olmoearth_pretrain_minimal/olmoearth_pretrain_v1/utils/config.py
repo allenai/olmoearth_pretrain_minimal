@@ -16,7 +16,7 @@ from __future__ import annotations
 import warnings
 from dataclasses import dataclass, fields, is_dataclass
 from importlib import import_module
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 
 # olmo-core is not used in the minimal package
 OLMO_CORE_AVAILABLE = False
@@ -46,7 +46,7 @@ class _StandaloneConfig:
         """Resolve a fully-qualified class name to a class object."""
         if "." not in class_name:
             return None
-        
+
         # Map old package paths to new ones for compatibility
         # Handle both "helios" (old name) and "olmoearth_pretrain" package names
         if class_name.startswith("helios."):
@@ -55,7 +55,7 @@ class _StandaloneConfig:
             class_name = class_name.replace("flexihelios", "flexi_vit")
         elif class_name.startswith("olmoearth_pretrain."):
             class_name = class_name.replace("olmoearth_pretrain.", "olmoearth_pretrain_minimal.olmoearth_pretrain_v1.", 1)
-        
+
         *modules, cls_name = class_name.split(".")
         module_name = ".".join(modules)
         try:
@@ -70,7 +70,7 @@ class _StandaloneConfig:
         if isinstance(data, dict):
             # Check if this dict represents a config class
             class_name = data.get(cls.CLASS_NAME_FIELD)
-            
+
             # First, recursively clean all nested values
             # This will resolve nested configs that have _CLASS_ fields
             cleaned = {}
@@ -98,7 +98,7 @@ class _StandaloneConfig:
                                 nested_resolved_cls = cls._resolve_class(nested_class_name)
                                 if nested_resolved_cls is not None and is_dataclass(nested_resolved_cls):
                                     nested_dict = {k: v for k, v in value.items() if k != cls.CLASS_NAME_FIELD}
-                                    valid_kwargs[key] = nested_resolved_cls.from_dict(nested_dict)
+                                    valid_kwargs[key] = cast("type[_StandaloneConfig]", nested_resolved_cls).from_dict(nested_dict)
                                 else:
                                     raise ValueError(
                                         f"Could not resolve nested config class '{nested_class_name}' for field '{key}'"
@@ -159,7 +159,7 @@ class _StandaloneConfig:
                 resolved_cls = cls._resolve_class(class_name)
                 if resolved_cls is not None and is_dataclass(resolved_cls):
                     config_dict = {k: v for k, v in cleaned.items() if k != cls.CLASS_NAME_FIELD}
-                    return resolved_cls.from_dict(config_dict)
+                    return cast("type[_StandaloneConfig]", resolved_cls).from_dict(config_dict)
                 else:
                     raise ValueError(
                         f"Could not resolve class '{class_name}' from _CLASS_ field. "
