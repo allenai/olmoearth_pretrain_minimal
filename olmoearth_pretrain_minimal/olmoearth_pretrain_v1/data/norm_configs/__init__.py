@@ -1,2 +1,1 @@
 """Normalization configuration files."""
-

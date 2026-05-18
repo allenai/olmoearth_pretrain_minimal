@@ -14,10 +14,15 @@ from torch.distributed.fsdp import (
     register_fsdp_forward_method,
 )
 
-from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.config import Config
-from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.datatypes import MaskedOlmoEarthSample
 from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.nn.flexi_vit import TokensAndMasks
-from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.nn.utils import DistributedMixins, unpack_encoder_output
+from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.nn.utils import (
+    DistributedMixins,
+    unpack_encoder_output,
+)
+from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.config import Config
+from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.datatypes import (
+    MaskedOlmoEarthSample,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -132,20 +137,20 @@ class LatentMIMConfig(Config):
     def validate(self) -> None:
         """Validate the configuration."""
         if (
-            self.encoder_config.supported_modalities
-            != self.decoder_config.supported_modalities
+            self.encoder_config.supported_modalities  # type: ignore[attr-defined]
+            != self.decoder_config.supported_modalities  # type: ignore[attr-defined]
         ):
             raise ValueError("Encoder and decoder must support the same modalities")
         if (
-            self.encoder_config.max_sequence_length
-            != self.decoder_config.max_sequence_length
+            self.encoder_config.max_sequence_length  # type: ignore[attr-defined]
+            != self.decoder_config.max_sequence_length  # type: ignore[attr-defined]
         ):
             raise ValueError(
                 "Encoder and decoder must have the same max sequence length"
             )
         if (
-            self.encoder_config.embedding_size
-            != self.decoder_config.encoder_embedding_size
+            self.encoder_config.embedding_size  # type: ignore[attr-defined]
+            != self.decoder_config.encoder_embedding_size  # type: ignore[attr-defined]
         ):
             raise ValueError("Encoder embedding size must be consistent!")
 

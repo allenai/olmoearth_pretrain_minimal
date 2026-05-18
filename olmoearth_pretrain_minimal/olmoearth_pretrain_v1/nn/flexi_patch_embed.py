@@ -12,7 +12,9 @@ import torch.nn.functional as F
 from einops import rearrange
 from torch import Tensor
 
-from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.constants import ModalitySpec
+from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.constants import (
+    ModalitySpec,
+)
 
 logger = logging.getLogger(__name__)
 

@@ -15,4 +15,3 @@ __all__ = [
     "load_model_from_path",
     "Normalizer",
 ]
-

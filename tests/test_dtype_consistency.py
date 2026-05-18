@@ -62,9 +62,7 @@ def test_nano_encoder_forward_low_precision(dtype: torch.dtype) -> None:
     sample = _make_sample(dtype)
 
     with torch.inference_mode():
-        out = model.encoder(
-            sample, patch_size=PATCH_SIZE, input_res=10, fast_pass=True
-        )
+        out = model.encoder(sample, patch_size=PATCH_SIZE, input_res=10, fast_pass=True)
 
     # Encoder output dtype should match the model/input dtype, not have been
     # silently upcast by an internal fp32 allocation.
@@ -72,5 +70,3 @@ def test_nano_encoder_forward_low_precision(dtype: torch.dtype) -> None:
     assert tokens.dtype == dtype, (
         f"Expected encoder output dtype {dtype}, got {tokens.dtype}"
     )
-
-

@@ -18,7 +18,10 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    "interrogate>=1.7.0",
+    "pre-commit>=4.3.0",
     "pytest>=7.0.0",
+    "ruff>=0.12.8",
     "olmoearth-pretrain==0.1.0",
 ]
 
@@ -31,6 +34,18 @@ include = ["olmoearth_pretrain_minimal*"]
 
 [tool.setuptools.package-data]
 "olmoearth_pretrain_minimal.olmoearth_pretrain_v1.data.norm_configs" = ["*.json"]
+
+[tool.ruff]
+fix = true
+
+[tool.ruff.lint]
+extend-select = ["D", "I", "UP"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D"]
 
 [tool.pytest.ini_options]
 markers = [

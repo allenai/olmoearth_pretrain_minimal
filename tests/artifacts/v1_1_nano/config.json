@@ -1,1 +1,819 @@
-{"run_name": "nano_1.1_lr0.0002_wd0.02", "model": {"encoder_config": {"supported_modality_names": ["sentinel2_l2a", "sentinel1", "landsat", "worldcover", "srtm", "openstreetmap_raster", "wri_canopy_height_map", "cdl", "worldcereal"], "embedding_size": 128, "max_patch_size": 8, "min_patch_size": 1, "num_heads": 8, "mlp_ratio": 4.0, "depth": 4, "drop_path": 0.1, "max_sequence_length": 12, "num_register_tokens": 0, "learnable_channel_embeddings": true, "random_channel_embeddings": false, "num_projection_layers": 1, "aggregate_then_project": true, "use_flash_attn": false, "frozen_patch_embeddings": false, "qk_norm": false, "log_token_norm_stats": false, "tokenization_config": {"overrides": {"sentinel2_l2a": {"band_groups": [["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]], "_CLASS_": "olmoearth_pretrain.nn.tokenization.ModalityTokenization"}, "landsat": {"band_groups": [["B8", "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B9", "B10", "B11"]], "_CLASS_": "olmoearth_pretrain.nn.tokenization.ModalityTokenization"}}, "_CLASS_": "olmoearth_pretrain.nn.tokenization.TokenizationConfig"}, "use_linear_patch_embed": true, "band_dropout_rate": 0.2, "random_band_dropout": true, "band_dropout_modalities": ["sentinel2_l2a", "landsat"], "_CLASS_": "olmoearth_pretrain.nn.flexi_vit.EncoderConfig"}, "decoder_config": {"supported_modality_names": ["sentinel2_l2a", "sentinel1", "landsat", "worldcover", "srtm", "openstreetmap_raster", "wri_canopy_height_map", "cdl", "worldcereal"], "encoder_embedding_size": 128, "decoder_embedding_size": 128, "depth": 4, "mlp_ratio": 4.0, "num_heads": 8, "max_sequence_length": 12, "drop_path": 0.0, "learnable_channel_embeddings": true, "random_channel_embeddings": false, "use_flash_attn": false, "qk_norm": false, "tokenization_config": {"overrides": {"sentinel2_l2a": {"band_groups": [["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]], "_CLASS_": "olmoearth_pretrain.nn.tokenization.ModalityTokenization"}, "landsat": {"band_groups": [["B8", "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B9", "B10", "B11"]], "_CLASS_": "olmoearth_pretrain.nn.tokenization.ModalityTokenization"}}, "_CLASS_": "olmoearth_pretrain.nn.tokenization.TokenizationConfig"}, "_CLASS_": "olmoearth_pretrain.nn.flexi_vit.PredictorConfig"}, "_CLASS_": "olmoearth_pretrain.nn.latent_mim.LatentMIMConfig"}, "dataset": {"h5py_dir": "/weka/dfive-default/helios/dataset/osm_sampling/h5py_data_w_missing_timesteps_zstd_3_128_x_4/cdl_gse_landsat_openstreetmap_raster_sentinel1_sentinel2_l2a_srtm_worldcereal_worldcover_worldpop_wri_canopy_height_map/1138828", "training_modalities": ["sentinel2_l2a", "sentinel1", "landsat", "worldcover", "srtm", "openstreetmap_raster", "wri_canopy_height_map", "cdl", "worldcereal"], "dtype": "float32", "normalize": true, "dataset_percentage": 1.0, "seed": 0, "apply_cutmix": false, "_CLASS_": "olmoearth_pretrain.data.dataset.OlmoEarthDatasetConfig"}, "data_loader": {"work_dir": "/weka/dfive-default/olmoearth_pretrain/checkpoints/gabrielt/nano_1.1_lr0.0002_wd0.02", "global_batch_size": 512, "min_patch_size": 1, "max_patch_size": 8, "sampled_hw_p_list": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], "seed": 3622, "token_budget": 2250, "shuffle": true, "num_workers": 16, "prefetch_factor": 4, "drop_last": true, "num_dataset_repeats_per_epoch": 1, "masking_config": {"strategy_config": {"type": "random_time_with_decode", "encode_ratio": 0.5, "decode_ratio": 0.5, "random_ratio": 0.5, "only_decode_modalities": ["worldcover", "srtm", "openstreetmap_raster", "wri_canopy_height_map", "cdl", "worldcereal"]}, "tokenization_config": {"overrides": {"sentinel2_l2a": {"band_groups": [["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]], "_CLASS_": "olmoearth_pretrain.nn.tokenization.ModalityTokenization"}, "landsat": {"band_groups": [["B8", "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B9", "B10", "B11"]], "_CLASS_": "olmoearth_pretrain.nn.tokenization.ModalityTokenization"}}, "_CLASS_": "olmoearth_pretrain.nn.tokenization.TokenizationConfig"}, "_CLASS_": "olmoearth_pretrain.train.masking.MaskingConfig"}, "num_masked_views": 2, "_CLASS_": "olmoearth_pretrain.data.dataloader.OlmoEarthDataLoaderConfig"}, "train_module": {"optim_config": {"compile": false, "fixed_fields": ["initial_lr"], "lr": 0.0002, "betas": [0.9, 0.999], "eps": 1e-08, "weight_decay": 0.02, "fused": false, "_CLASS_": "olmo_core.optim.adamw.AdamWConfig"}, "rank_microbatch_size": 64, "transform_config": {"transform_type": "flip_and_rotate", "transform_kwargs": {}, "_CLASS_": "olmoearth_pretrain.data.transform.TransformConfig"}, "compile_model": false, "dp_config": {"name": "fsdp", "param_dtype": "bfloat16", "reduce_dtype": "float32", "_CLASS_": "olmo_core.distributed.parallel.data_parallel.DataParallelConfig"}, "compile_loss": false, "max_grad_norm": 1.0, "scheduler": {"lr_field": "lr", "initial_lr_field": "initial_lr", "units": "steps", "warmup": 8000, "alpha_f": 0.1, "warmup_min_lr": 0.0, "_CLASS_": "olmo_core.optim.scheduler.CosWithWarmup"}, "find_unused_parameters": true, "loss_config": {"loss_config": {"tau": 0.1, "same_target_threshold": 0.999, "mask_negatives_for_modalities": ["worldcover", "srtm", "openstreetmap_raster", "wri_canopy_height_map", "cdl", "worldcereal"]}, "_CLASS_": "olmoearth_pretrain.train.loss.LossConfig"}, "masking_config": {"strategy_config": {"type": "random_time_with_decode", "encode_ratio": 0.5, "decode_ratio": 0.5, "random_ratio": 0.5, "only_decode_modalities": ["worldcover", "srtm", "openstreetmap_raster", "wri_canopy_height_map", "cdl", "worldcereal"]}, "tokenization_config": {"overrides": {"sentinel2_l2a": {"band_groups": [["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]], "_CLASS_": "olmoearth_pretrain.nn.tokenization.ModalityTokenization"}, "landsat": {"band_groups": [["B8", "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B9", "B10", "B11"]], "_CLASS_": "olmoearth_pretrain.nn.tokenization.ModalityTokenization"}}, "_CLASS_": "olmoearth_pretrain.nn.tokenization.TokenizationConfig"}, "_CLASS_": "olmoearth_pretrain.train.masking.MaskingConfig"}, "token_exit_cfg": {"sentinel2_l2a": 0, "sentinel1": 0, "landsat": 0, "worldcover": 0, "srtm": 0, "openstreetmap_raster": 0, "wri_canopy_height_map": 0, "cdl": 0, "worldcereal": 0}, "ema_decay": [1.0, 1.0], "contrastive_config": {"loss_config": {"weight": 0.05}, "_CLASS_": "olmoearth_pretrain.train.loss.LossConfig"}, "reinit_targets": false, "_CLASS_": "olmoearth_pretrain.train.train_module.contrastive_latentmim.ContrastiveLatentMIMTrainModuleConfig"}, "trainer": {"save_folder": "/weka/dfive-default/olmoearth_pretrain/checkpoints/gabrielt/nano_1.1_lr0.0002_wd0.02", "work_dir": "/weka/dfive-default/olmoearth_pretrain/checkpoints/gabrielt/nano_1.1_lr0.0002_wd0.02", "load_strategy": "if_available", "checkpointer": {"work_dir": "/weka/dfive-default/olmoearth_pretrain/checkpoints/gabrielt/nano_1.1_lr0.0002_wd0.02", "pre_download": false, "throttle_uploads": false, "_CLASS_": "olmo_core.train.checkpoint.CheckpointerConfig"}, "save_overwrite": false, "max_duration": {"value": 300, "unit": "epochs", "_CLASS_": "olmo_core.train.common.Duration"}, "cancel_check_interval": 25, "metrics_collect_interval": 10, "callbacks": {"wandb": {"enabled": true, "name": "nano_1.1_lr0.0002_wd0.02", "project": "2026_02_08_masked_neg", "entity": "eai-ai2", "cancel_tags": ["cancel", "canceled", "cancelled"], "upload_dataset_distribution_pre_train": true, "upload_modality_data_band_distribution_pre_train": false, "restart_on_same_run": true, "_CLASS_": "olmoearth_pretrain.train.callbacks.wandb.OlmoEarthWandBCallback"}, "speed_monitor": {"_CLASS_": "olmoearth_pretrain.train.callbacks.speed_monitor.OlmoEarthSpeedMonitorCallback"}, "gpu_memory_monitor": {"_CLASS_": "olmo_core.train.callbacks.gpu_memory_monitor.GPUMemoryMonitorCallback"}, "config_saver": {"fname": "config.json", "_CLASS_": "olmo_core.train.callbacks.config_saver.ConfigSaverCallback"}, "downstream_evaluator": {"tasks": {"m-eurosat": {"dataset": "m-eurosat", "num_workers": 0, "pooling_type": "mean", "norm_stats_from_pretrained": true, "input_modalities": ["sentinel2_l2a"], "input_layers": [], "embedding_batch_size": 128, "probe_batch_size": 32, "linear_probe_eval_interval": 50, "ft_batch_size": 32, "finetune_seed": 42, "epochs": 50, "patch_size": 4, "eval_interval": {"value": 4000, "unit": "steps", "_CLASS_": "olmo_core.train.common.Duration"}, "eval_mode": "knn", "probe_type": "linear", "use_pooled_tokens": false, "partition": "default", "norm_method": "norm_no_clip_2_std", "select_best_by_primary_metric": false, "quantize_embeddings": false, "use_dice_loss": false, "primary_metric": "accuracy", "pretrain_max_samples": 512, "_CLASS_": "olmoearth_pretrain.train.callbacks.evaluator_callback.DownstreamTaskConfig"}, "m_so2sat": {"dataset": "m-so2sat", "num_workers": 4, "pooling_type": "mean", "norm_stats_from_pretrained": true, "input_modalities": ["sentinel2_l2a"], "input_layers": [], "embedding_batch_size": 128, "probe_batch_size": 32, "linear_probe_eval_interval": 50, "ft_batch_size": 32, "finetune_seed": 42, "epochs": 50, "patch_size": 4, "eval_interval": {"value": 20000, "unit": "steps", "_CLASS_": "olmo_core.train.common.Duration"}, "eval_mode": "knn", "probe_type": "linear", "use_pooled_tokens": false, "partition": "default", "norm_method": "norm_no_clip_2_std", "select_best_by_primary_metric": false, "quantize_embeddings": false, "use_dice_loss": false, "primary_metric": "accuracy", "pretrain_max_samples": 512, "_CLASS_": "olmoearth_pretrain.train.callbacks.evaluator_callback.DownstreamTaskConfig"}, "mados": {"dataset": "mados", "num_workers": 8, "pooling_type": "mean", "norm_stats_from_pretrained": false, "input_modalities": ["sentinel2_l2a"], "input_layers": [], "embedding_batch_size": 128, "probe_lr": 0.01, "probe_batch_size": 128, "linear_probe_eval_interval": 50, "ft_batch_size": 32, "finetune_seed": 42, "epochs": 50, "patch_size": 4, "eval_interval": {"value": 4000, "unit": "steps", "_CLASS_": "olmo_core.train.common.Duration"}, "eval_mode": "linear_probe", "probe_type": "linear", "use_pooled_tokens": false, "partition": "default", "norm_method": "norm_no_clip_2_std", "select_best_by_primary_metric": false, "quantize_embeddings": false, "use_dice_loss": false, "primary_metric": "micro_f1", "pretrain_max_samples": 512, "_CLASS_": "olmoearth_pretrain.train.callbacks.evaluator_callback.DownstreamTaskConfig"}, "pastis": {"dataset": "pastis", "num_workers": 2, "pooling_type": "mean", "norm_stats_from_pretrained": true, "input_modalities": ["sentinel2_l2a"], "input_layers": [], "embedding_batch_size": 32, "probe_lr": 0.1, "probe_batch_size": 8, "linear_probe_eval_interval": 50, "ft_batch_size": 32, "finetune_seed": 42, "epochs": 50, "patch_size": 4, "eval_interval": {"value": 20000, "unit": "steps", "_CLASS_": "olmo_core.train.common.Duration"}, "eval_mode": "linear_probe", "probe_type": "linear", "use_pooled_tokens": false, "partition": "default", "norm_method": "norm_no_clip_2_std", "select_best_by_primary_metric": false, "quantize_embeddings": false, "use_dice_loss": false, "primary_metric": "miou", "pretrain_max_samples": 512, "_CLASS_": "olmoearth_pretrain.train.callbacks.evaluator_callback.DownstreamTaskConfig"}, "yemen_crop": {"dataset": "yemen_crop", "num_workers": 2, "pooling_type": "mean", "norm_stats_from_pretrained": true, "input_modalities": ["sentinel2_l2a"], "input_layers": [], "embedding_batch_size": 32, "probe_lr": 0.001, "probe_batch_size": 8, "linear_probe_eval_interval": 50, "ft_batch_size": 32, "finetune_seed": 42, "epochs": 50, "patch_size": 4, "eval_interval": {"value": 20000, "unit": "steps", "_CLASS_": "olmo_core.train.common.Duration"}, "eval_mode": "linear_probe", "probe_type": "linear", "use_pooled_tokens": false, "partition": "default", "norm_method": "norm_no_clip_2_std", "select_best_by_primary_metric": false, "quantize_embeddings": false, "use_dice_loss": false, "pretrain_max_samples": 512, "_CLASS_": "olmoearth_pretrain.train.callbacks.evaluator_callback.DownstreamTaskConfig"}, "geo_ecosystem_annual_test": {"dataset": "geo_ecosystem_annual_test", "num_workers": 8, "pooling_type": "mean", "norm_stats_from_pretrained": true, "input_modalities": ["sentinel2_l2a"], "input_layers": [], "embedding_batch_size": 32, "probe_lr": 0.01, "probe_batch_size": 8, "linear_probe_eval_interval": 50, "ft_batch_size": 32, "finetune_seed": 42, "epochs": 50, "patch_size": 4, "eval_interval": {"value": 20000, "unit": "steps", "_CLASS_": "olmo_core.train.common.Duration"}, "eval_mode": "linear_probe", "probe_type": "linear", "use_pooled_tokens": false, "partition": "default", "norm_method": "norm_no_clip_2_std", "select_best_by_primary_metric": false, "quantize_embeddings": false, "use_dice_loss": false, "pretrain_max_samples": 512, "_CLASS_": "olmoearth_pretrain.train.callbacks.evaluator_callback.DownstreamTaskConfig"}, "canada_wildfire_sat_eval_split": {"dataset": "canada_wildfire_sat_eval_split", "num_workers": 2, "pooling_type": "mean", "norm_stats_from_pretrained": true, "input_modalities": ["sentinel2_l2a"], "input_layers": [], "embedding_batch_size": 32, "probe_lr": 0.1, "probe_batch_size": 16, "linear_probe_eval_interval": 50, "ft_batch_size": 32, "finetune_seed": 42, "epochs": 50, "patch_size": 5, "eval_interval": {"value": 20000, "unit": "steps", "_CLASS_": "olmo_core.train.common.Duration"}, "eval_mode": "linear_probe", "probe_type": "linear", "use_pooled_tokens": false, "partition": "default", "norm_method": "norm_no_clip_2_std", "select_best_by_primary_metric": false, "quantize_embeddings": false, "use_dice_loss": true, "primary_metric": "class_f1", "primary_metric_class": 1, "pretrain_max_samples": 512, "_CLASS_": "olmoearth_pretrain.train.callbacks.evaluator_callback.DownstreamTaskConfig"}}, "enabled": true, "eval_on_startup": false, "cancel_after_first_eval": false, "run_on_test": false, "n_bootstrap": 0, "bootstrap_seed": 42, "_CLASS_": "olmoearth_pretrain.train.callbacks.evaluator_callback.DownstreamEvaluatorCallbackConfig"}, "garbage_collector": {"gc_interval": 1, "enabled": true, "_CLASS_": "olmo_core.train.callbacks.garbage_collector.GarbageCollectorCallback"}, "beaker": {"enabled": true, "result_dir": "/results", "_CLASS_": "olmo_core.train.callbacks.beaker.BeakerCallback"}, "checkpointer": {"save_interval": 5000, "ephemeral_save_interval": 250, "remove": "ephemeral_only", "enabled": true, "_CLASS_": "olmo_core.train.callbacks.checkpointer.CheckpointerCallback"}}, "bookkeeping_soft_timeout": 30, "no_checkpoints": false, "no_evals": false, "_CLASS_": "olmo_core.train.config.TrainerConfig"}, "launch": {"name": "nano_1.1_lr0.0002_wd0.02-train-00fda44a", "cmd": ["scripts/vnext/single_bandset_band_dropout/nano.py", "train", "nano_1.1_lr0.0002_wd0.02", "ai2/ceres-cirrascale", "--train_module.optim_config.lr=0.0002", "--train_module.optim_config.weight_decay=0.02", "--launch.clusters=[ai2/jupiter-cirrascale-2]", "--launch.priority=urgent", "--launch.num_gpus=4"], "budget": "ai2/es-platform", "task_name": "train", "workspace": "ai2/earth-systems", "setup_steps": ["echo \"$GCP_CREDENTIALS\" > $GOOGLE_APPLICATION_CREDENTIALS", "conda install gh --channel conda-forge", "gh auth status", "gh repo clone $REPO_URL .", "git checkout \"$GIT_REF\"", "git submodule update --init --recursive", "pip install uv", "export PATH=\"/root/.local/bin:$PATH\" ", "uv sync --locked --all-extras", "venv_path=$(uv run python -c 'import sys; print(sys.executable)')", "source \"$(dirname \"$venv_path\")/activate\"", "uv pip install breizhcrops==0.0.4.1 ", "uv pip show torch", "uv run python -c 'import torch; print(torch.__version__); print(torch.version.cuda); print(torch.cuda.get_arch_list())'"], "beaker_image": "petew/olmo-core-tch271cu128-2025-09-15", "num_nodes": 1, "num_gpus": 4, "shared_memory": "256GiB", "clusters": ["ai2/jupiter-cirrascale-2"], "shared_filesystem": true, "priority": "urgent", "preemptible": true, "env_vars": [{"name": "GOOGLE_APPLICATION_CREDENTIALS", "value": "/etc/gcp_credentials.json", "_CLASS_": "olmo_core.launch.beaker.BeakerEnvVar"}, {"name": "NCCL_DEBUG", "value": "WARN", "_CLASS_": "olmo_core.launch.beaker.BeakerEnvVar"}, {"name": "TORCH_NCCL_TRACE_BUFFER_SIZE", "value": "0", "_CLASS_": "olmo_core.launch.beaker.BeakerEnvVar"}, {"name": "TORCH_NCCL_BLOCKING_WAIT", "value": "0", "_CLASS_": "olmo_core.launch.beaker.BeakerEnvVar"}], "env_secrets": [{"name": "BEAKER_TOKEN", "secret": "gabrielt_BEAKER_TOKEN", "_CLASS_": "olmo_core.launch.beaker.BeakerEnvSecret"}, {"name": "WANDB_API_KEY", "secret": "gabrielt_WANDB_API_KEY", "_CLASS_": "olmo_core.launch.beaker.BeakerEnvSecret"}, {"name": "GITHUB_TOKEN", "secret": "gabrielt_GITHUB_TOKEN", "_CLASS_": "olmo_core.launch.beaker.BeakerEnvSecret"}, {"name": "GCP_CREDENTIALS", "secret": "HELIOS_GCP_CREDENTIALS", "_CLASS_": "olmo_core.launch.beaker.BeakerEnvSecret"}], "nfs": false, "weka_buckets": [{"bucket": "dfive-default", "mount": "/weka/dfive-default", "_CLASS_": "olmo_core.launch.beaker.BeakerWekaBucket"}], "allow_dirty": false, "git": {"repo_url": "https://github.com/allenai/helios", "ref": "1dee7a2d9a2883ed03e1f44af3c7349844be8da4", "_CLASS_": "olmo_core.launch.utils.GitConfig"}, "result_dir": "/results", "use_hostname_constraints": false, "_CLASS_": "olmoearth_pretrain.internal.experiment.OlmoEarthBeakerLaunchConfig"}, "init_seed": 12536, "_CLASS_": "olmoearth_pretrain.internal.experiment.OlmoEarthExperimentConfig"}
+{
+  "_CLASS_": "olmoearth_pretrain.internal.experiment.OlmoEarthExperimentConfig",
+  "data_loader": {
+    "_CLASS_": "olmoearth_pretrain.data.dataloader.OlmoEarthDataLoaderConfig",
+    "drop_last": true,
+    "global_batch_size": 512,
+    "masking_config": {
+      "_CLASS_": "olmoearth_pretrain.train.masking.MaskingConfig",
+      "strategy_config": {
+        "decode_ratio": 0.5,
+        "encode_ratio": 0.5,
+        "only_decode_modalities": [
+          "worldcover",
+          "srtm",
+          "openstreetmap_raster",
+          "wri_canopy_height_map",
+          "cdl",
+          "worldcereal"
+        ],
+        "random_ratio": 0.5,
+        "type": "random_time_with_decode"
+      },
+      "tokenization_config": {
+        "_CLASS_": "olmoearth_pretrain.nn.tokenization.TokenizationConfig",
+        "overrides": {
+          "landsat": {
+            "_CLASS_": "olmoearth_pretrain.nn.tokenization.ModalityTokenization",
+            "band_groups": [
+              [
+                "B8",
+                "B1",
+                "B2",
+                "B3",
+                "B4",
+                "B5",
+                "B6",
+                "B7",
+                "B9",
+                "B10",
+                "B11"
+              ]
+            ]
+          },
+          "sentinel2_l2a": {
+            "_CLASS_": "olmoearth_pretrain.nn.tokenization.ModalityTokenization",
+            "band_groups": [
+              [
+                "B02",
+                "B03",
+                "B04",
+                "B08",
+                "B05",
+                "B06",
+                "B07",
+                "B8A",
+                "B11",
+                "B12",
+                "B01",
+                "B09"
+              ]
+            ]
+          }
+        }
+      }
+    },
+    "max_patch_size": 8,
+    "min_patch_size": 1,
+    "num_dataset_repeats_per_epoch": 1,
+    "num_masked_views": 2,
+    "num_workers": 16,
+    "prefetch_factor": 4,
+    "sampled_hw_p_list": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+    ],
+    "seed": 3622,
+    "shuffle": true,
+    "token_budget": 2250,
+    "work_dir": "/weka/dfive-default/olmoearth_pretrain/checkpoints/gabrielt/nano_1.1_lr0.0002_wd0.02"
+  },
+  "dataset": {
+    "_CLASS_": "olmoearth_pretrain.data.dataset.OlmoEarthDatasetConfig",
+    "apply_cutmix": false,
+    "dataset_percentage": 1.0,
+    "dtype": "float32",
+    "h5py_dir": "/weka/dfive-default/helios/dataset/osm_sampling/h5py_data_w_missing_timesteps_zstd_3_128_x_4/cdl_gse_landsat_openstreetmap_raster_sentinel1_sentinel2_l2a_srtm_worldcereal_worldcover_worldpop_wri_canopy_height_map/1138828",
+    "normalize": true,
+    "seed": 0,
+    "training_modalities": [
+      "sentinel2_l2a",
+      "sentinel1",
+      "landsat",
+      "worldcover",
+      "srtm",
+      "openstreetmap_raster",
+      "wri_canopy_height_map",
+      "cdl",
+      "worldcereal"
+    ]
+  },
+  "init_seed": 12536,
+  "launch": {
+    "_CLASS_": "olmoearth_pretrain.internal.experiment.OlmoEarthBeakerLaunchConfig",
+    "allow_dirty": false,
+    "beaker_image": "petew/olmo-core-tch271cu128-2025-09-15",
+    "budget": "ai2/es-platform",
+    "clusters": [
+      "ai2/jupiter-cirrascale-2"
+    ],
+    "cmd": [
+      "scripts/vnext/single_bandset_band_dropout/nano.py",
+      "train",
+      "nano_1.1_lr0.0002_wd0.02",
+      "ai2/ceres-cirrascale",
+      "--train_module.optim_config.lr=0.0002",
+      "--train_module.optim_config.weight_decay=0.02",
+      "--launch.clusters=[ai2/jupiter-cirrascale-2]",
+      "--launch.priority=urgent",
+      "--launch.num_gpus=4"
+    ],
+    "env_secrets": [
+      {
+        "_CLASS_": "olmo_core.launch.beaker.BeakerEnvSecret",
+        "name": "BEAKER_TOKEN",
+        "secret": "gabrielt_BEAKER_TOKEN"
+      },
+      {
+        "_CLASS_": "olmo_core.launch.beaker.BeakerEnvSecret",
+        "name": "WANDB_API_KEY",
+        "secret": "gabrielt_WANDB_API_KEY"
+      },
+      {
+        "_CLASS_": "olmo_core.launch.beaker.BeakerEnvSecret",
+        "name": "GITHUB_TOKEN",
+        "secret": "gabrielt_GITHUB_TOKEN"
+      },
+      {
+        "_CLASS_": "olmo_core.launch.beaker.BeakerEnvSecret",
+        "name": "GCP_CREDENTIALS",
+        "secret": "HELIOS_GCP_CREDENTIALS"
+      }
+    ],
+    "env_vars": [
+      {
+        "_CLASS_": "olmo_core.launch.beaker.BeakerEnvVar",
+        "name": "GOOGLE_APPLICATION_CREDENTIALS",
+        "value": "/etc/gcp_credentials.json"
+      },
+      {
+        "_CLASS_": "olmo_core.launch.beaker.BeakerEnvVar",
+        "name": "NCCL_DEBUG",
+        "value": "WARN"
+      },
+      {
+        "_CLASS_": "olmo_core.launch.beaker.BeakerEnvVar",
+        "name": "TORCH_NCCL_TRACE_BUFFER_SIZE",
+        "value": "0"
+      },
+      {
+        "_CLASS_": "olmo_core.launch.beaker.BeakerEnvVar",
+        "name": "TORCH_NCCL_BLOCKING_WAIT",
+        "value": "0"
+      }
+    ],
+    "git": {
+      "_CLASS_": "olmo_core.launch.utils.GitConfig",
+      "ref": "1dee7a2d9a2883ed03e1f44af3c7349844be8da4",
+      "repo_url": "https://github.com/allenai/helios"
+    },
+    "name": "nano_1.1_lr0.0002_wd0.02-train-00fda44a",
+    "nfs": false,
+    "num_gpus": 4,
+    "num_nodes": 1,
+    "preemptible": true,
+    "priority": "urgent",
+    "result_dir": "/results",
+    "setup_steps": [
+      "echo \"$GCP_CREDENTIALS\" > $GOOGLE_APPLICATION_CREDENTIALS",
+      "conda install gh --channel conda-forge",
+      "gh auth status",
+      "gh repo clone $REPO_URL .",
+      "git checkout \"$GIT_REF\"",
+      "git submodule update --init --recursive",
+      "pip install uv",
+      "export PATH=\"/root/.local/bin:$PATH\" ",
+      "uv sync --locked --all-extras",
+      "venv_path=$(uv run python -c 'import sys; print(sys.executable)')",
+      "source \"$(dirname \"$venv_path\")/activate\"",
+      "uv pip install breizhcrops==0.0.4.1 ",
+      "uv pip show torch",
+      "uv run python -c 'import torch; print(torch.__version__); print(torch.version.cuda); print(torch.cuda.get_arch_list())'"
+    ],
+    "shared_filesystem": true,
+    "shared_memory": "256GiB",
+    "task_name": "train",
+    "use_hostname_constraints": false,
+    "weka_buckets": [
+      {
+        "_CLASS_": "olmo_core.launch.beaker.BeakerWekaBucket",
+        "bucket": "dfive-default",
+        "mount": "/weka/dfive-default"
+      }
+    ],
+    "workspace": "ai2/earth-systems"
+  },
+  "model": {
+    "_CLASS_": "olmoearth_pretrain.nn.latent_mim.LatentMIMConfig",
+    "decoder_config": {
+      "_CLASS_": "olmoearth_pretrain.nn.flexi_vit.PredictorConfig",
+      "decoder_embedding_size": 128,
+      "depth": 4,
+      "drop_path": 0.0,
+      "encoder_embedding_size": 128,
+      "learnable_channel_embeddings": true,
+      "max_sequence_length": 12,
+      "mlp_ratio": 4.0,
+      "num_heads": 8,
+      "qk_norm": false,
+      "random_channel_embeddings": false,
+      "supported_modality_names": [
+        "sentinel2_l2a",
+        "sentinel1",
+        "landsat",
+        "worldcover",
+        "srtm",
+        "openstreetmap_raster",
+        "wri_canopy_height_map",
+        "cdl",
+        "worldcereal"
+      ],
+      "tokenization_config": {
+        "_CLASS_": "olmoearth_pretrain.nn.tokenization.TokenizationConfig",
+        "overrides": {
+          "landsat": {
+            "_CLASS_": "olmoearth_pretrain.nn.tokenization.ModalityTokenization",
+            "band_groups": [
+              [
+                "B8",
+                "B1",
+                "B2",
+                "B3",
+                "B4",
+                "B5",
+                "B6",
+                "B7",
+                "B9",
+                "B10",
+                "B11"
+              ]
+            ]
+          },
+          "sentinel2_l2a": {
+            "_CLASS_": "olmoearth_pretrain.nn.tokenization.ModalityTokenization",
+            "band_groups": [
+              [
+                "B02",
+                "B03",
+                "B04",
+                "B08",
+                "B05",
+                "B06",
+                "B07",
+                "B8A",
+                "B11",
+                "B12",
+                "B01",
+                "B09"
+              ]
+            ]
+          }
+        }
+      },
+      "use_flash_attn": false
+    },
+    "encoder_config": {
+      "_CLASS_": "olmoearth_pretrain.nn.flexi_vit.EncoderConfig",
+      "aggregate_then_project": true,
+      "band_dropout_modalities": [
+        "sentinel2_l2a",
+        "landsat"
+      ],
+      "band_dropout_rate": 0.2,
+      "depth": 4,
+      "drop_path": 0.1,
+      "embedding_size": 128,
+      "frozen_patch_embeddings": false,
+      "learnable_channel_embeddings": true,
+      "log_token_norm_stats": false,
+      "max_patch_size": 8,
+      "max_sequence_length": 12,
+      "min_patch_size": 1,
+      "mlp_ratio": 4.0,
+      "num_heads": 8,
+      "num_projection_layers": 1,
+      "num_register_tokens": 0,
+      "qk_norm": false,
+      "random_band_dropout": true,
+      "random_channel_embeddings": false,
+      "supported_modality_names": [
+        "sentinel2_l2a",
+        "sentinel1",
+        "landsat",
+        "worldcover",
+        "srtm",
+        "openstreetmap_raster",
+        "wri_canopy_height_map",
+        "cdl",
+        "worldcereal"
+      ],
+      "tokenization_config": {
+        "_CLASS_": "olmoearth_pretrain.nn.tokenization.TokenizationConfig",
+        "overrides": {
+          "landsat": {
+            "_CLASS_": "olmoearth_pretrain.nn.tokenization.ModalityTokenization",
+            "band_groups": [
+              [
+                "B8",
+                "B1",
+                "B2",
+                "B3",
+                "B4",
+                "B5",
+                "B6",
+                "B7",
+                "B9",
+                "B10",
+                "B11"
+              ]
+            ]
+          },
+          "sentinel2_l2a": {
+            "_CLASS_": "olmoearth_pretrain.nn.tokenization.ModalityTokenization",
+            "band_groups": [
+              [
+                "B02",
+                "B03",
+                "B04",
+                "B08",
+                "B05",
+                "B06",
+                "B07",
+                "B8A",
+                "B11",
+                "B12",
+                "B01",
+                "B09"
+              ]
+            ]
+          }
+        }
+      },
+      "use_flash_attn": false,
+      "use_linear_patch_embed": true
+    }
+  },
+  "run_name": "nano_1.1_lr0.0002_wd0.02",
+  "train_module": {
+    "_CLASS_": "olmoearth_pretrain.train.train_module.contrastive_latentmim.ContrastiveLatentMIMTrainModuleConfig",
+    "compile_loss": false,
+    "compile_model": false,
+    "contrastive_config": {
+      "_CLASS_": "olmoearth_pretrain.train.loss.LossConfig",
+      "loss_config": {
+        "weight": 0.05
+      }
+    },
+    "dp_config": {
+      "_CLASS_": "olmo_core.distributed.parallel.data_parallel.DataParallelConfig",
+      "name": "fsdp",
+      "param_dtype": "bfloat16",
+      "reduce_dtype": "float32"
+    },
+    "ema_decay": [
+      1.0,
+      1.0
+    ],
+    "find_unused_parameters": true,
+    "loss_config": {
+      "_CLASS_": "olmoearth_pretrain.train.loss.LossConfig",
+      "loss_config": {
+        "mask_negatives_for_modalities": [
+          "worldcover",
+          "srtm",
+          "openstreetmap_raster",
+          "wri_canopy_height_map",
+          "cdl",
+          "worldcereal"
+        ],
+        "same_target_threshold": 0.999,
+        "tau": 0.1
+      }
+    },
+    "masking_config": {
+      "_CLASS_": "olmoearth_pretrain.train.masking.MaskingConfig",
+      "strategy_config": {
+        "decode_ratio": 0.5,
+        "encode_ratio": 0.5,
+        "only_decode_modalities": [
+          "worldcover",
+          "srtm",
+          "openstreetmap_raster",
+          "wri_canopy_height_map",
+          "cdl",
+          "worldcereal"
+        ],
+        "random_ratio": 0.5,
+        "type": "random_time_with_decode"
+      },
+      "tokenization_config": {
+        "_CLASS_": "olmoearth_pretrain.nn.tokenization.TokenizationConfig",
+        "overrides": {
+          "landsat": {
+            "_CLASS_": "olmoearth_pretrain.nn.tokenization.ModalityTokenization",
+            "band_groups": [
+              [
+                "B8",
+                "B1",
+                "B2",
+                "B3",
+                "B4",
+                "B5",
+                "B6",
+                "B7",
+                "B9",
+                "B10",
+                "B11"
+              ]
+            ]
+          },
+          "sentinel2_l2a": {
+            "_CLASS_": "olmoearth_pretrain.nn.tokenization.ModalityTokenization",
+            "band_groups": [
+              [
+                "B02",
+                "B03",
+                "B04",
+                "B08",
+                "B05",
+                "B06",
+                "B07",
+                "B8A",
+                "B11",
+                "B12",
+                "B01",
+                "B09"
+              ]
+            ]
+          }
+        }
+      }
+    },
+    "max_grad_norm": 1.0,
+    "optim_config": {
+      "_CLASS_": "olmo_core.optim.adamw.AdamWConfig",
+      "betas": [
+        0.9,
+        0.999
+      ],
+      "compile": false,
+      "eps": 1e-08,
+      "fixed_fields": [
+        "initial_lr"
+      ],
+      "fused": false,
+      "lr": 0.0002,
+      "weight_decay": 0.02
+    },
+    "rank_microbatch_size": 64,
+    "reinit_targets": false,
+    "scheduler": {
+      "_CLASS_": "olmo_core.optim.scheduler.CosWithWarmup",
+      "alpha_f": 0.1,
+      "initial_lr_field": "initial_lr",
+      "lr_field": "lr",
+      "units": "steps",
+      "warmup": 8000,
+      "warmup_min_lr": 0.0
+    },
+    "token_exit_cfg": {
+      "cdl": 0,
+      "landsat": 0,
+      "openstreetmap_raster": 0,
+      "sentinel1": 0,
+      "sentinel2_l2a": 0,
+      "srtm": 0,
+      "worldcereal": 0,
+      "worldcover": 0,
+      "wri_canopy_height_map": 0
+    },
+    "transform_config": {
+      "_CLASS_": "olmoearth_pretrain.data.transform.TransformConfig",
+      "transform_kwargs": {},
+      "transform_type": "flip_and_rotate"
+    }
+  },
+  "trainer": {
+    "_CLASS_": "olmo_core.train.config.TrainerConfig",
+    "bookkeeping_soft_timeout": 30,
+    "callbacks": {
+      "beaker": {
+        "_CLASS_": "olmo_core.train.callbacks.beaker.BeakerCallback",
+        "enabled": true,
+        "result_dir": "/results"
+      },
+      "checkpointer": {
+        "_CLASS_": "olmo_core.train.callbacks.checkpointer.CheckpointerCallback",
+        "enabled": true,
+        "ephemeral_save_interval": 250,
+        "remove": "ephemeral_only",
+        "save_interval": 5000
+      },
+      "config_saver": {
+        "_CLASS_": "olmo_core.train.callbacks.config_saver.ConfigSaverCallback",
+        "fname": "config.json"
+      },
+      "downstream_evaluator": {
+        "_CLASS_": "olmoearth_pretrain.train.callbacks.evaluator_callback.DownstreamEvaluatorCallbackConfig",
+        "bootstrap_seed": 42,
+        "cancel_after_first_eval": false,
+        "enabled": true,
+        "eval_on_startup": false,
+        "n_bootstrap": 0,
+        "run_on_test": false,
+        "tasks": {
+          "canada_wildfire_sat_eval_split": {
+            "_CLASS_": "olmoearth_pretrain.train.callbacks.evaluator_callback.DownstreamTaskConfig",
+            "dataset": "canada_wildfire_sat_eval_split",
+            "embedding_batch_size": 32,
+            "epochs": 50,
+            "eval_interval": {
+              "_CLASS_": "olmo_core.train.common.Duration",
+              "unit": "steps",
+              "value": 20000
+            },
+            "eval_mode": "linear_probe",
+            "finetune_seed": 42,
+            "ft_batch_size": 32,
+            "input_layers": [],
+            "input_modalities": [
+              "sentinel2_l2a"
+            ],
+            "linear_probe_eval_interval": 50,
+            "norm_method": "norm_no_clip_2_std",
+            "norm_stats_from_pretrained": true,
+            "num_workers": 2,
+            "partition": "default",
+            "patch_size": 5,
+            "pooling_type": "mean",
+            "pretrain_max_samples": 512,
+            "primary_metric": "class_f1",
+            "primary_metric_class": 1,
+            "probe_batch_size": 16,
+            "probe_lr": 0.1,
+            "probe_type": "linear",
+            "quantize_embeddings": false,
+            "select_best_by_primary_metric": false,
+            "use_dice_loss": true,
+            "use_pooled_tokens": false
+          },
+          "geo_ecosystem_annual_test": {
+            "_CLASS_": "olmoearth_pretrain.train.callbacks.evaluator_callback.DownstreamTaskConfig",
+            "dataset": "geo_ecosystem_annual_test",
+            "embedding_batch_size": 32,
+            "epochs": 50,
+            "eval_interval": {
+              "_CLASS_": "olmo_core.train.common.Duration",
+              "unit": "steps",
+              "value": 20000
+            },
+            "eval_mode": "linear_probe",
+            "finetune_seed": 42,
+            "ft_batch_size": 32,
+            "input_layers": [],
+            "input_modalities": [
+              "sentinel2_l2a"
+            ],
+            "linear_probe_eval_interval": 50,
+            "norm_method": "norm_no_clip_2_std",
+            "norm_stats_from_pretrained": true,
+            "num_workers": 8,
+            "partition": "default",
+            "patch_size": 4,
+            "pooling_type": "mean",
+            "pretrain_max_samples": 512,
+            "probe_batch_size": 8,
+            "probe_lr": 0.01,
+            "probe_type": "linear",
+            "quantize_embeddings": false,
+            "select_best_by_primary_metric": false,
+            "use_dice_loss": false,
+            "use_pooled_tokens": false
+          },
+          "m-eurosat": {
+            "_CLASS_": "olmoearth_pretrain.train.callbacks.evaluator_callback.DownstreamTaskConfig",
+            "dataset": "m-eurosat",
+            "embedding_batch_size": 128,
+            "epochs": 50,
+            "eval_interval": {
+              "_CLASS_": "olmo_core.train.common.Duration",
+              "unit": "steps",
+              "value": 4000
+            },
+            "eval_mode": "knn",
+            "finetune_seed": 42,
+            "ft_batch_size": 32,
+            "input_layers": [],
+            "input_modalities": [
+              "sentinel2_l2a"
+            ],
+            "linear_probe_eval_interval": 50,
+            "norm_method": "norm_no_clip_2_std",
+            "norm_stats_from_pretrained": true,
+            "num_workers": 0,
+            "partition": "default",
+            "patch_size": 4,
+            "pooling_type": "mean",
+            "pretrain_max_samples": 512,
+            "primary_metric": "accuracy",
+            "probe_batch_size": 32,
+            "probe_type": "linear",
+            "quantize_embeddings": false,
+            "select_best_by_primary_metric": false,
+            "use_dice_loss": false,
+            "use_pooled_tokens": false
+          },
+          "m_so2sat": {
+            "_CLASS_": "olmoearth_pretrain.train.callbacks.evaluator_callback.DownstreamTaskConfig",
+            "dataset": "m-so2sat",
+            "embedding_batch_size": 128,
+            "epochs": 50,
+            "eval_interval": {
+              "_CLASS_": "olmo_core.train.common.Duration",
+              "unit": "steps",
+              "value": 20000
+            },
+            "eval_mode": "knn",
+            "finetune_seed": 42,
+            "ft_batch_size": 32,
+            "input_layers": [],
+            "input_modalities": [
+              "sentinel2_l2a"
+            ],
+            "linear_probe_eval_interval": 50,
+            "norm_method": "norm_no_clip_2_std",
+            "norm_stats_from_pretrained": true,
+            "num_workers": 4,
+            "partition": "default",
+            "patch_size": 4,
+            "pooling_type": "mean",
+            "pretrain_max_samples": 512,
+            "primary_metric": "accuracy",
+            "probe_batch_size": 32,
+            "probe_type": "linear",
+            "quantize_embeddings": false,
+            "select_best_by_primary_metric": false,
+            "use_dice_loss": false,
+            "use_pooled_tokens": false
+          },
+          "mados": {
+            "_CLASS_": "olmoearth_pretrain.train.callbacks.evaluator_callback.DownstreamTaskConfig",
+            "dataset": "mados",
+            "embedding_batch_size": 128,
+            "epochs": 50,
+            "eval_interval": {
+              "_CLASS_": "olmo_core.train.common.Duration",
+              "unit": "steps",
+              "value": 4000
+            },
+            "eval_mode": "linear_probe",
+            "finetune_seed": 42,
+            "ft_batch_size": 32,
+            "input_layers": [],
+            "input_modalities": [
+              "sentinel2_l2a"
+            ],
+            "linear_probe_eval_interval": 50,
+            "norm_method": "norm_no_clip_2_std",
+            "norm_stats_from_pretrained": false,
+            "num_workers": 8,
+            "partition": "default",
+            "patch_size": 4,
+            "pooling_type": "mean",
+            "pretrain_max_samples": 512,
+            "primary_metric": "micro_f1",
+            "probe_batch_size": 128,
+            "probe_lr": 0.01,
+            "probe_type": "linear",
+            "quantize_embeddings": false,
+            "select_best_by_primary_metric": false,
+            "use_dice_loss": false,
+            "use_pooled_tokens": false
+          },
+          "pastis": {
+            "_CLASS_": "olmoearth_pretrain.train.callbacks.evaluator_callback.DownstreamTaskConfig",
+            "dataset": "pastis",
+            "embedding_batch_size": 32,
+            "epochs": 50,
+            "eval_interval": {
+              "_CLASS_": "olmo_core.train.common.Duration",
+              "unit": "steps",
+              "value": 20000
+            },
+            "eval_mode": "linear_probe",
+            "finetune_seed": 42,
+            "ft_batch_size": 32,
+            "input_layers": [],
+            "input_modalities": [
+              "sentinel2_l2a"
+            ],
+            "linear_probe_eval_interval": 50,
+            "norm_method": "norm_no_clip_2_std",
+            "norm_stats_from_pretrained": true,
+            "num_workers": 2,
+            "partition": "default",
+            "patch_size": 4,
+            "pooling_type": "mean",
+            "pretrain_max_samples": 512,
+            "primary_metric": "miou",
+            "probe_batch_size": 8,
+            "probe_lr": 0.1,
+            "probe_type": "linear",
+            "quantize_embeddings": false,
+            "select_best_by_primary_metric": false,
+            "use_dice_loss": false,
+            "use_pooled_tokens": false
+          },
+          "yemen_crop": {
+            "_CLASS_": "olmoearth_pretrain.train.callbacks.evaluator_callback.DownstreamTaskConfig",
+            "dataset": "yemen_crop",
+            "embedding_batch_size": 32,
+            "epochs": 50,
+            "eval_interval": {
+              "_CLASS_": "olmo_core.train.common.Duration",
+              "unit": "steps",
+              "value": 20000
+            },
+            "eval_mode": "linear_probe",
+            "finetune_seed": 42,
+            "ft_batch_size": 32,
+            "input_layers": [],
+            "input_modalities": [
+              "sentinel2_l2a"
+            ],
+            "linear_probe_eval_interval": 50,
+            "norm_method": "norm_no_clip_2_std",
+            "norm_stats_from_pretrained": true,
+            "num_workers": 2,
+            "partition": "default",
+            "patch_size": 4,
+            "pooling_type": "mean",
+            "pretrain_max_samples": 512,
+            "probe_batch_size": 8,
+            "probe_lr": 0.001,
+            "probe_type": "linear",
+            "quantize_embeddings": false,
+            "select_best_by_primary_metric": false,
+            "use_dice_loss": false,
+            "use_pooled_tokens": false
+          }
+        }
+      },
+      "garbage_collector": {
+        "_CLASS_": "olmo_core.train.callbacks.garbage_collector.GarbageCollectorCallback",
+        "enabled": true,
+        "gc_interval": 1
+      },
+      "gpu_memory_monitor": {
+        "_CLASS_": "olmo_core.train.callbacks.gpu_memory_monitor.GPUMemoryMonitorCallback"
+      },
+      "speed_monitor": {
+        "_CLASS_": "olmoearth_pretrain.train.callbacks.speed_monitor.OlmoEarthSpeedMonitorCallback"
+      },
+      "wandb": {
+        "_CLASS_": "olmoearth_pretrain.train.callbacks.wandb.OlmoEarthWandBCallback",
+        "cancel_tags": [
+          "cancel",
+          "canceled",
+          "cancelled"
+        ],
+        "enabled": true,
+        "entity": "eai-ai2",
+        "name": "nano_1.1_lr0.0002_wd0.02",
+        "project": "2026_02_08_masked_neg",
+        "restart_on_same_run": true,
+        "upload_dataset_distribution_pre_train": true,
+        "upload_modality_data_band_distribution_pre_train": false
+      }
+    },
+    "cancel_check_interval": 25,
+    "checkpointer": {
+      "_CLASS_": "olmo_core.train.checkpoint.CheckpointerConfig",
+      "pre_download": false,
+      "throttle_uploads": false,
+      "work_dir": "/weka/dfive-default/olmoearth_pretrain/checkpoints/gabrielt/nano_1.1_lr0.0002_wd0.02"
+    },
+    "load_strategy": "if_available",
+    "max_duration": {
+      "_CLASS_": "olmo_core.train.common.Duration",
+      "unit": "epochs",
+      "value": 300
+    },
+    "metrics_collect_interval": 10,
+    "no_checkpoints": false,
+    "no_evals": false,
+    "save_folder": "/weka/dfive-default/olmoearth_pretrain/checkpoints/gabrielt/nano_1.1_lr0.0002_wd0.02",
+    "save_overwrite": false,
+    "work_dir": "/weka/dfive-default/olmoearth_pretrain/checkpoints/gabrielt/nano_1.1_lr0.0002_wd0.02"
+  }
+}

@@ -5,13 +5,18 @@ This module provides a simple interface to initialize OlmoEarth v1 models.
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 import torch
 
+from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.nn.flexi_vit import (
+    EncoderConfig,
+    PredictorConfig,
+)
+from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.nn.latent_mim import (
+    LatentMIMConfig,
+)
 from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.constants import Modality
-from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.nn.flexi_vit import EncoderConfig, PredictorConfig
-from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.nn.latent_mim import LatentMIM, LatentMIMConfig
 
 # Model size configurations matching the official OlmoEarth v1 models
 MODEL_SIZE_CONFIGS = {
@@ -110,9 +115,9 @@ class OlmoEarthPretrain_v1(torch.nn.Module):
 
         # Build encoder config
         encoder_config = EncoderConfig(
-            embedding_size=model_config["encoder_embedding_size"],
-            num_heads=model_config["encoder_num_heads"],
-            depth=model_config["encoder_depth"],
+            embedding_size=int(model_config["encoder_embedding_size"]),
+            num_heads=int(model_config["encoder_num_heads"]),
+            depth=int(model_config["encoder_depth"]),
             mlp_ratio=model_config["mlp_ratio"],
             supported_modality_names=supported_modality_names,
             max_patch_size=max_patch_size,
@@ -122,11 +127,11 @@ class OlmoEarthPretrain_v1(torch.nn.Module):
 
         # Build decoder config
         decoder_config = PredictorConfig(
-            encoder_embedding_size=model_config["encoder_embedding_size"],
-            decoder_embedding_size=model_config["decoder_embedding_size"],
-            depth=model_config["decoder_depth"],
+            encoder_embedding_size=int(model_config["encoder_embedding_size"]),
+            decoder_embedding_size=int(model_config["decoder_embedding_size"]),
+            depth=int(model_config["decoder_depth"]),
             mlp_ratio=model_config["mlp_ratio"],
-            num_heads=model_config["decoder_num_heads"],
+            num_heads=int(model_config["decoder_num_heads"]),
             supported_modality_names=supported_modality_names,
             max_sequence_length=max_sequence_length,
         )
@@ -139,14 +144,13 @@ class OlmoEarthPretrain_v1(torch.nn.Module):
 
         self.model = model_config_obj.build()
 
-    def forward(self, *args, **kwargs):
+    def forward(self, *args: Any, **kwargs: Any) -> Any:
         """Forward pass through the model."""
         return self.model(*args, **kwargs)
 
-    def __getattr__(self, name: str):
+    def __getattr__(self, name: str) -> Any:
         """Delegate attribute access to the underlying model."""
         try:
             return super().__getattr__(name)
         except AttributeError:
             return getattr(self.model, name)
-

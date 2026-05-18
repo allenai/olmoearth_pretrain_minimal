@@ -22,6 +22,7 @@ def test_band_dropout_disabled_by_default() -> None:
     assert encoder.band_dropout_rate == 0.5
     assert encoder.patch_embeddings.band_dropout_rate == 0.0
 
+
 def test_enable_band_dropout() -> None:
     """Test Encoder.enable_band_dropout activates the configured rate."""
     encoder = Encoder(
