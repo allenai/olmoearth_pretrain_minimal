@@ -129,11 +129,35 @@ def test_direct_initialization() -> None:
 def test_direct_initialization_all_sizes() -> None:
     """Test direct model initialization for all model sizes."""
     for model_size in ["nano", "tiny", "base", "large"]:
-        model = OlmoEarthPretrain_v1(model_size=model_size)  # type: ignore[arg-type]
+        model = OlmoEarthPretrain_v1(model_size=model_size, model_version="v1")  # type: ignore[arg-type]
         assert model is not None
         param_count = sum(p.numel() for p in model.parameters())
         assert param_count > 0
         assert model.encoder.patch_embeddings.band_dropout_rate == 0
+
+
+def test_direct_initialization_v1_1_all_sizes() -> None:
+    """Test direct model initialization of v1.1 models for all supported sizes."""
+    expected_hidden = {"nano": [12], "tiny": [64], "base": [64]}
+    for model_size in ["nano", "tiny", "base"]:
+        model = OlmoEarthPretrain_v1(model_size=model_size, model_version="v1.1")  # type: ignore[arg-type]
+        assert model is not None
+        param_count = sum(p.numel() for p in model.parameters())
+        assert param_count > 0
+        # v1.1 keeps band dropout inactive at construction (enable_band_dropout)
+        assert model.encoder.patch_embeddings.band_dropout_rate == 0.0
+        assert model.encoder.band_dropout_rate == 0.2
+        assert model.encoder.patch_embed_hidden_sizes == expected_hidden[model_size]
+        for module in model.encoder.patch_embeddings.per_modality_embeddings.values():
+            for embed in module.values():
+                if hasattr(embed, "pixel_proj"):
+                    assert embed.pixel_proj is not None
+
+
+def test_v1_1_rejects_large() -> None:
+    """Test that v1.1 does not support the large model size."""
+    with pytest.raises(ValueError, match="not available for v1.1"):
+        OlmoEarthPretrain_v1(model_size="large", model_version="v1.1")
 
 
 def test_invalid_model_size() -> None:
