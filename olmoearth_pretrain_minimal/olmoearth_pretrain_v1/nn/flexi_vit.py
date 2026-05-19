@@ -1334,6 +1334,10 @@ class Encoder(FlexiVitBase):
             random_band_dropout: If True, sample dropout rate from Uniform(0, band_dropout_rate).
             band_dropout_modalities: If provided, only apply band dropout to these
                 modalities. If None, apply to all modalities. Default: None.
+            patch_embed_hidden_sizes: Optional per-pixel MLP applied before patchification.
+                See FlexiPatchEmbed for details.
+            post_proj_hidden_sizes: Optional MLP applied after the patch projection.
+                See FlexiPatchEmbed for details.
         """
         self.tokenization_config = tokenization_config or TokenizationConfig()
         super().__init__(
