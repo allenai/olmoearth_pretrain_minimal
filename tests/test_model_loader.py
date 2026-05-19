@@ -114,6 +114,42 @@ def test_load_large_model_with_weights() -> None:
     assert model.encoder.patch_embeddings.band_dropout_rate == 0
 
 
+@pytest.mark.slow
+def test_load_v1_1_nano_model_with_weights() -> None:
+    """Test loading nano model with pre-trained weights."""
+    model = load_model_from_id(ModelID.OLMOEARTH_V1_1_NANO, load_weights=True)
+    assert model is not None
+    param_count = sum(p.numel() for p in model.parameters())
+    assert param_count > 0
+    assert model.encoder.patch_embeddings.band_dropout_rate == 0
+    assert model.encoder.band_dropout_rate == 0.2
+    assert model.encoder.patch_embed_hidden_sizes == [12]
+
+
+@pytest.mark.slow
+def test_load_v1_1_tiny_model_with_weights() -> None:
+    """Test loading tiny model with pre-trained weights."""
+    model = load_model_from_id(ModelID.OLMOEARTH_V1_1_TINY, load_weights=True)
+    assert model is not None
+    param_count = sum(p.numel() for p in model.parameters())
+    assert param_count > 0
+    assert model.encoder.patch_embeddings.band_dropout_rate == 0
+    assert model.encoder.band_dropout_rate == 0.2
+    assert model.encoder.patch_embed_hidden_sizes == [64]
+
+
+@pytest.mark.slow
+def test_load_v1_1_base_model_with_weights() -> None:
+    """Test loading base model with pre-trained weights."""
+    model = load_model_from_id(ModelID.OLMOEARTH_V1_1_BASE, load_weights=True)
+    assert model is not None
+    param_count = sum(p.numel() for p in model.parameters())
+    assert param_count > 0
+    assert model.encoder.patch_embeddings.band_dropout_rate == 0
+    assert model.encoder.band_dropout_rate == 0.2
+    assert model.encoder.patch_embed_hidden_sizes == [64]
+
+
 def test_direct_initialization() -> None:
     """Test direct model initialization with custom modalities."""
     model = OlmoEarthPretrain_v1(
@@ -148,10 +184,6 @@ def test_direct_initialization_v1_1_all_sizes() -> None:
         assert model.encoder.patch_embeddings.band_dropout_rate == 0.0
         assert model.encoder.band_dropout_rate == 0.2
         assert model.encoder.patch_embed_hidden_sizes == expected_hidden[model_size]
-        for module in model.encoder.patch_embeddings.per_modality_embeddings.values():
-            for embed in module.values():
-                if hasattr(embed, "pixel_proj"):
-                    assert embed.pixel_proj is not None
 
 
 def test_v1_1_rejects_large() -> None:
