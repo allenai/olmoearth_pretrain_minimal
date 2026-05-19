@@ -384,6 +384,8 @@ class MultiModalPatchEmbeddings(nn.Module):
         band_dropout_rate: float = 0.0,
         random_band_dropout: bool = False,
         band_dropout_modalities: list[str] | None = None,
+        patch_embed_hidden_sizes: list[int] | None = None,
+        post_proj_hidden_sizes: list[int] | None = None,
     ):
         """Initialize the patch embeddings.
 
@@ -404,6 +406,10 @@ class MultiModalPatchEmbeddings(nn.Module):
                 and acts as stronger augmentation. Default: False (fixed rate).
             band_dropout_modalities: If provided, only apply band dropout to these
                 modalities. If None, apply to all modalities. Default: None.
+            patch_embed_hidden_sizes: Optional per-pixel MLP applied before patchification.
+                See FlexiPatchEmbed for details.
+            post_proj_hidden_sizes: Optional MLP applied after the patch projection.
+                See FlexiPatchEmbed for details.
         """
         super().__init__()
         self.max_patch_size = max_patch_size
@@ -414,6 +420,8 @@ class MultiModalPatchEmbeddings(nn.Module):
         self.band_dropout_rate = band_dropout_rate
         self.random_band_dropout = random_band_dropout
         self.band_dropout_modalities = band_dropout_modalities
+        self.patch_embed_hidden_sizes = patch_embed_hidden_sizes
+        self.post_proj_hidden_sizes = post_proj_hidden_sizes
         # TODO: want to be able to remove certain bands and modalities
         self.per_modality_embeddings = nn.ModuleDict({})
 
@@ -477,6 +485,8 @@ class MultiModalPatchEmbeddings(nn.Module):
                         base_patch_size_at_16=self.max_patch_size,
                         modality_spec=modality_spec,
                         use_linear_patch_embed=self.use_linear_patch_embed,
+                        patch_embed_hidden_sizes=self.patch_embed_hidden_sizes,
+                        post_proj_hidden_sizes=self.post_proj_hidden_sizes,
                     )
                     for idx, channel_set_idxs in enumerate(bandset_indices)
                 }
@@ -1290,6 +1300,8 @@ class Encoder(FlexiVitBase):
         band_dropout_rate: float = 0.0,
         random_band_dropout: bool = False,
         band_dropout_modalities: list[str] | None = None,
+        patch_embed_hidden_sizes: list[int] | None = None,
+        post_proj_hidden_sizes: list[int] | None = None,
     ):
         """Initialize the encoder.
 
@@ -1322,6 +1334,10 @@ class Encoder(FlexiVitBase):
             random_band_dropout: If True, sample dropout rate from Uniform(0, band_dropout_rate).
             band_dropout_modalities: If provided, only apply band dropout to these
                 modalities. If None, apply to all modalities. Default: None.
+            patch_embed_hidden_sizes: Optional per-pixel MLP applied before patchification.
+                See FlexiPatchEmbed for details.
+            post_proj_hidden_sizes: Optional MLP applied after the patch projection.
+                See FlexiPatchEmbed for details.
         """
         self.tokenization_config = tokenization_config or TokenizationConfig()
         super().__init__(
@@ -1352,6 +1368,8 @@ class Encoder(FlexiVitBase):
         self.band_dropout_rate = band_dropout_rate
         self.random_band_dropout = random_band_dropout
         self.band_dropout_modalities = band_dropout_modalities
+        self.patch_embed_hidden_sizes = patch_embed_hidden_sizes
+        self.post_proj_hidden_sizes = post_proj_hidden_sizes
         # Configured rate; remains inactive until ``enable_band_dropout`` is called.
         # Default is disabled so fine-tuning never applies band dropout unless the
         # caller (e.g. pretraining online encoder) explicitly enables it.
@@ -1364,6 +1382,8 @@ class Encoder(FlexiVitBase):
             band_dropout_rate=0.0,
             random_band_dropout=self.random_band_dropout,
             band_dropout_modalities=self.band_dropout_modalities,
+            patch_embed_hidden_sizes=self.patch_embed_hidden_sizes,
+            post_proj_hidden_sizes=self.post_proj_hidden_sizes,
         )
         self.project_and_aggregate = ProjectAndAggregate(
             embedding_size=self.embedding_size,
@@ -2239,6 +2259,8 @@ class EncoderConfig(Config):
     band_dropout_rate: float = 0.0
     random_band_dropout: bool = False
     band_dropout_modalities: list[str] | None = None
+    patch_embed_hidden_sizes: list[int] | None = None
+    post_proj_hidden_sizes: list[int] | None = None
 
     def validate(self) -> None:
         """Validate the configuration."""

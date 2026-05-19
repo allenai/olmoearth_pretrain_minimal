@@ -114,6 +114,42 @@ def test_load_large_model_with_weights() -> None:
     assert model.encoder.patch_embeddings.band_dropout_rate == 0
 
 
+@pytest.mark.slow
+def test_load_v1_1_nano_model_with_weights() -> None:
+    """Test loading nano model with pre-trained weights."""
+    model = load_model_from_id(ModelID.OLMOEARTH_V1_1_NANO, load_weights=True)
+    assert model is not None
+    param_count = sum(p.numel() for p in model.parameters())
+    assert param_count > 0
+    assert model.encoder.patch_embeddings.band_dropout_rate == 0
+    assert model.encoder.band_dropout_rate == 0.2
+    assert model.encoder.patch_embed_hidden_sizes == [12]
+
+
+@pytest.mark.slow
+def test_load_v1_1_tiny_model_with_weights() -> None:
+    """Test loading tiny model with pre-trained weights."""
+    model = load_model_from_id(ModelID.OLMOEARTH_V1_1_TINY, load_weights=True)
+    assert model is not None
+    param_count = sum(p.numel() for p in model.parameters())
+    assert param_count > 0
+    assert model.encoder.patch_embeddings.band_dropout_rate == 0
+    assert model.encoder.band_dropout_rate == 0.2
+    assert model.encoder.patch_embed_hidden_sizes == [64]
+
+
+@pytest.mark.slow
+def test_load_v1_1_base_model_with_weights() -> None:
+    """Test loading base model with pre-trained weights."""
+    model = load_model_from_id(ModelID.OLMOEARTH_V1_1_BASE, load_weights=True)
+    assert model is not None
+    param_count = sum(p.numel() for p in model.parameters())
+    assert param_count > 0
+    assert model.encoder.patch_embeddings.band_dropout_rate == 0
+    assert model.encoder.band_dropout_rate == 0.2
+    assert model.encoder.patch_embed_hidden_sizes == [64]
+
+
 def test_direct_initialization() -> None:
     """Test direct model initialization with custom modalities."""
     model = OlmoEarthPretrain_v1(
@@ -129,11 +165,31 @@ def test_direct_initialization() -> None:
 def test_direct_initialization_all_sizes() -> None:
     """Test direct model initialization for all model sizes."""
     for model_size in ["nano", "tiny", "base", "large"]:
-        model = OlmoEarthPretrain_v1(model_size=model_size)  # type: ignore[arg-type]
+        model = OlmoEarthPretrain_v1(model_size=model_size, model_version="v1")  # type: ignore[arg-type]
         assert model is not None
         param_count = sum(p.numel() for p in model.parameters())
         assert param_count > 0
         assert model.encoder.patch_embeddings.band_dropout_rate == 0
+
+
+def test_direct_initialization_v1_1_all_sizes() -> None:
+    """Test direct model initialization of v1.1 models for all supported sizes."""
+    expected_hidden = {"nano": [12], "tiny": [64], "base": [64]}
+    for model_size in ["nano", "tiny", "base"]:
+        model = OlmoEarthPretrain_v1(model_size=model_size, model_version="v1.1")  # type: ignore[arg-type]
+        assert model is not None
+        param_count = sum(p.numel() for p in model.parameters())
+        assert param_count > 0
+        # v1.1 keeps band dropout inactive at construction (enable_band_dropout)
+        assert model.encoder.patch_embeddings.band_dropout_rate == 0.0
+        assert model.encoder.band_dropout_rate == 0.2
+        assert model.encoder.patch_embed_hidden_sizes == expected_hidden[model_size]
+
+
+def test_v1_1_rejects_large() -> None:
+    """Test that v1.1 does not support the large model size."""
+    with pytest.raises(ValueError, match="not available for v1.1"):
+        OlmoEarthPretrain_v1(model_size="large", model_version="v1.1")
 
 
 def test_invalid_model_size() -> None:

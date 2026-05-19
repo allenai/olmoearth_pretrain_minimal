@@ -71,6 +71,20 @@ DEFAULT_MODALITIES = [
     Modality.WORLDCEREAL.name,
 ]
 
+# v1.1 adds a per-pixel hidden layer before patchification, band dropout, and
+# uses the linear patch embed. The hidden size differs by model size.
+V1_1_PATCH_EMBED_HIDDEN_SIZES = {
+    "nano": [12],
+    "tiny": [64],
+    "base": [64],
+}
+V1_1_BAND_DROPOUT_RATE = 0.2
+V1_1_BAND_DROPOUT_MODALITIES = [
+    Modality.SENTINEL2_L2A.name,
+    Modality.LANDSAT.name,
+]
+V1_1_SUPPORTED_SIZES = ("nano", "tiny", "base")
+
 
 class OlmoEarthPretrain_v1(torch.nn.Module):
     """OlmoEarth Pretrain v1 model.
@@ -83,6 +97,7 @@ class OlmoEarthPretrain_v1(torch.nn.Module):
     def __init__(
         self,
         model_size: Literal["nano", "tiny", "base", "large"] = "nano",
+        model_version: Literal["v1", "v1.1"] = "v1.1",
         supported_modality_names: list[str] | None = None,
         max_patch_size: int = 8,
         max_sequence_length: int = 12,
@@ -91,7 +106,9 @@ class OlmoEarthPretrain_v1(torch.nn.Module):
         """Initialize an OlmoEarth Pretrain v1 model.
 
         Args:
-            model_size: Size of the model. Options: "nano", "tiny", "base", "large".
+            model_size: Size of the model. Options: "nano", "tiny", "base", "large"
+                ("large" is v1 only).
+            model_version: Which model version to build.
             supported_modality_names: List of modality names to support. If None,
                 uses the default modalities from OlmoEarth v1 training.
             max_patch_size: Maximum patch size for the encoder.
@@ -108,10 +125,26 @@ class OlmoEarthPretrain_v1(torch.nn.Module):
                 f"Must be one of {['nano', 'tiny', 'base', 'large']}"
             )
 
+        if model_version == "v1.1" and model_size not in V1_1_SUPPORTED_SIZES:
+            raise ValueError(
+                f"model_size {model_size!r} is not available for v1.1. "
+                f"Must be one of {list(V1_1_SUPPORTED_SIZES)}"
+            )
+
         if supported_modality_names is None:
             supported_modality_names = DEFAULT_MODALITIES
 
         model_config = MODEL_SIZE_CONFIGS[config_key]
+
+        encoder_extra_kwargs: dict[str, Any] = {}
+        if model_version == "v1.1":
+            encoder_extra_kwargs = {
+                "use_linear_patch_embed": True,
+                "patch_embed_hidden_sizes": V1_1_PATCH_EMBED_HIDDEN_SIZES[model_size],
+                "band_dropout_rate": V1_1_BAND_DROPOUT_RATE,
+                "random_band_dropout": True,
+                "band_dropout_modalities": V1_1_BAND_DROPOUT_MODALITIES,
+            }
 
         # Build encoder config
         encoder_config = EncoderConfig(
@@ -123,6 +156,7 @@ class OlmoEarthPretrain_v1(torch.nn.Module):
             max_patch_size=max_patch_size,
             drop_path=drop_path,
             max_sequence_length=max_sequence_length,
+            **encoder_extra_kwargs,
         )
 
         # Build decoder config
