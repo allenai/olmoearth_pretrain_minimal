@@ -37,12 +37,12 @@ uv installs everything into a venv, so to keep using python commands you can act
 The OlmoEarth models are trained on three satellite modalities (Sentinel 2, Sentinel 1 and Landsat) and six derived maps (OpenStreetMap, WorldCover, USDA Cropland Data Layer, SRTM DEM, WRI Canopy Height Map, and WorldCereal).
 
 **Note:** The model weights are released under the [OlmoEarth Artifact License](https://github.com/allenai/olmoearth_pretrain/blob/main/LICENSE)
-| Model Size | Weights | Encoder Params | Decoder Params |
-| --- | --- | --- | --- |
-| Nano | [link](https://huggingface.co/allenai/OlmoEarth-v1-Nano) | 1.4M | 800K |
-| Tiny | [link](https://huggingface.co/allenai/OlmoEarth-v1-Tiny) | 6.2M | 1.9M |
-| Base | [link](https://huggingface.co/allenai/OlmoEarth-v1-Base) | 89M | 30M |
-| Large | [link](https://huggingface.co/allenai/OlmoEarth-v1-Large) | 308M | 53M |
+| Model Size | v1 Weights | v1.1 Weights | Encoder Params (v1 / v1.1) | Decoder Params |
+| --- | --- | --- | --- | --- |
+| Nano | [link](https://huggingface.co/allenai/OlmoEarth-v1-Nano) | [link](https://huggingface.co/allenai/OlmoEarth-v1_1-Nano) | 1.4M / 1.7M | 800K |
+| Tiny | [link](https://huggingface.co/allenai/OlmoEarth-v1-Tiny) | [link](https://huggingface.co/allenai/OlmoEarth-v1_1-Tiny) | 6.2M / 12M | 1.9M |
+| Base | [link](https://huggingface.co/allenai/OlmoEarth-v1-Base) | [link](https://huggingface.co/allenai/OlmoEarth-v1_1-Base) | 89M / 114M | 30M |
+| Large | [link](https://huggingface.co/allenai/OlmoEarth-v1-Large) | — | 308M / — | 53M |
 
 
 ## Usage
