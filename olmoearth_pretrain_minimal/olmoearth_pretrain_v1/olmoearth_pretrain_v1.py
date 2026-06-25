@@ -29,6 +29,15 @@ MODEL_SIZE_CONFIGS = {
         "decoder_num_heads": 8,
         "mlp_ratio": 4.0,
     },
+    "small_shallow_decoder": {
+        "decoder_depth": 4,
+        "encoder_embedding_size": 384,
+        "decoder_embedding_size": 384,
+        "encoder_depth": 12,
+        "encoder_num_heads": 6,
+        "decoder_num_heads": 6,
+        "mlp_ratio": 4.0,
+    },
     "tiny_shallow_decoder": {
         "decoder_depth": 4,
         "encoder_embedding_size": 192,
@@ -71,6 +80,7 @@ DEFAULT_MODALITIES = [
     Modality.WORLDCEREAL.name,
 ]
 
+V1_SUPPORTED_SIZES = ("nano", "tiny", "base", "large")
 # v1.1 adds a per-pixel hidden layer before patchification, band dropout, and
 # uses the linear patch embed. The hidden size differs by model size.
 V1_1_PATCH_EMBED_HIDDEN_SIZES = {
@@ -85,6 +95,12 @@ V1_1_BAND_DROPOUT_MODALITIES = [
 ]
 V1_1_SUPPORTED_SIZES = ("nano", "tiny", "base")
 
+# v1.2 replaces the sequence and spatial absolute encodings with rope encodings
+V1_2_POS_ENCODING = "rope_3d_mixed"
+V1_2_ROPE_MIXED_BASE = 10_000.0
+V1_2_ROPE_TEMPORAL_COORDINATE_SCALE = 1.0 / 30.0
+V1_2_SUPPORTED_SIZES = ("nano", "small", "tiny", "base")
+
 
 class OlmoEarthPretrain_v1(torch.nn.Module):
     """OlmoEarth Pretrain v1 model.
@@ -96,8 +112,8 @@ class OlmoEarthPretrain_v1(torch.nn.Module):
 
     def __init__(
         self,
-        model_size: Literal["nano", "tiny", "base", "large"] = "nano",
-        model_version: Literal["v1", "v1.1"] = "v1.1",
+        model_size: Literal["nano", "tiny", "small", "base", "large"] = "nano",
+        model_version: Literal["v1", "v1.1", "v1.2"] = "v1.2",
         supported_modality_names: list[str] | None = None,
         max_patch_size: int = 8,
         max_sequence_length: int = 12,
@@ -122,7 +138,13 @@ class OlmoEarthPretrain_v1(torch.nn.Module):
         if config_key not in MODEL_SIZE_CONFIGS:
             raise ValueError(
                 f"Invalid model_size: {model_size}. "
-                f"Must be one of {['nano', 'tiny', 'base', 'large']}"
+                f"Must be one of {['nano', 'small', 'tiny', 'base', 'large']}"
+            )
+
+        if model_version == "v1" and model_size not in V1_SUPPORTED_SIZES:
+            raise ValueError(
+                f"model_size {model_size!r} is not available for v1 "
+                f"Must be one of {list(V1_SUPPORTED_SIZES)}"
             )
 
         if model_version == "v1.1" and model_size not in V1_1_SUPPORTED_SIZES:
@@ -131,13 +153,19 @@ class OlmoEarthPretrain_v1(torch.nn.Module):
                 f"Must be one of {list(V1_1_SUPPORTED_SIZES)}"
             )
 
+        if model_version == "v1.2" and model_size not in V1_2_SUPPORTED_SIZES:
+            raise ValueError(
+                f"model_size {model_size!r} is not available for v1.2. "
+                f"Must be one of {list(V1_2_SUPPORTED_SIZES)}"
+            )
+
         if supported_modality_names is None:
             supported_modality_names = DEFAULT_MODALITIES
 
         model_config = MODEL_SIZE_CONFIGS[config_key]
 
         encoder_extra_kwargs: dict[str, Any] = {}
-        if model_version == "v1.1":
+        if model_version in ["v1.1", "v1.2"]:
             encoder_extra_kwargs = {
                 "use_linear_patch_embed": True,
                 "patch_embed_hidden_sizes": V1_1_PATCH_EMBED_HIDDEN_SIZES[model_size],
@@ -145,6 +173,14 @@ class OlmoEarthPretrain_v1(torch.nn.Module):
                 "random_band_dropout": True,
                 "band_dropout_modalities": V1_1_BAND_DROPOUT_MODALITIES,
             }
+            if model_version == "v1.2":
+                encoder_extra_kwargs.update(
+                    {
+                        "position_encoding": V1_2_POS_ENCODING,
+                        "rope_mixed_base": V1_2_ROPE_MIXED_BASE,
+                        "rope_temporal_coordinate_scale": V1_2_ROPE_TEMPORAL_COORDINATE_SCALE,
+                    }
+                )
 
         # Build encoder config
         encoder_config = EncoderConfig(

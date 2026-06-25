@@ -186,10 +186,45 @@ def test_direct_initialization_v1_1_all_sizes() -> None:
         assert model.encoder.patch_embed_hidden_sizes == expected_hidden[model_size]
 
 
+def test_direct_initialization_v1_2_all_sizes() -> None:
+    """Test direct model initialization of v1.1 models for all supported sizes."""
+    expected_hidden = {"nano": [12], "tiny": [64], "base": [64]}
+    for model_size in ["nano", "tiny", "base"]:
+        model = OlmoEarthPretrain_v1(model_size=model_size, model_version="v1.2")  # type: ignore[arg-type]
+        assert model is not None
+        param_count = sum(p.numel() for p in model.parameters())
+        assert param_count > 0
+        # v1.1 keeps band dropout inactive at construction (enable_band_dropout)
+        assert model.encoder.patch_embeddings.band_dropout_rate == 0.0
+        assert model.encoder.band_dropout_rate == 0.2
+        assert model.encoder.patch_embed_hidden_sizes == expected_hidden[model_size]
+        assert model.encoder.position_encoding == "rope_3d_mixed"
+        assert model.encoder.rope_base == 10_000.0
+        assert model.encoder.rope_temporal_coordinate_scale == 1.0 / 30.0
+
+
+def test_v1_rejects_small() -> None:
+    """Test that v1 does not support the small model size."""
+    with pytest.raises(ValueError, match="not available for v1"):
+        OlmoEarthPretrain_v1(model_size="small", model_version="v1")
+
+
 def test_v1_1_rejects_large() -> None:
     """Test that v1.1 does not support the large model size."""
     with pytest.raises(ValueError, match="not available for v1.1"):
         OlmoEarthPretrain_v1(model_size="large", model_version="v1.1")
+
+
+def test_v1_1_rejects_small() -> None:
+    """Test that v1.1 does not support the small model size."""
+    with pytest.raises(ValueError, match="not available for v1.1"):
+        OlmoEarthPretrain_v1(model_size="small", model_version="v1.1")
+
+
+def test_v1_2_rejects_large() -> None:
+    """Test that v1.2 does not support the large model size."""
+    with pytest.raises(ValueError, match="not available for v1.2"):
+        OlmoEarthPretrain_v1(model_size="large", model_version="v1.2")
 
 
 def test_invalid_model_size() -> None:
@@ -227,3 +262,37 @@ def test_load_v1_1_config() -> None:
     # band dropout will be off by default. To enable it, call
     # model.encoder.enable_band_dropout()
     assert model.encoder.patch_embeddings.band_dropout_rate == 0.0
+
+
+def test_load_v1_2_config() -> None:
+    """Test loading nano model from config."""
+    model = load_model_from_path(model_path=ARTIFACTS / "v1_2_nano", load_weights=False)
+    assert model is not None
+    param_count = sum(p.numel() for p in model.parameters())
+    assert param_count > 0
+
+    # also test the forward functionality works
+    B, H, W, T, num_s2_bands = 1, 16, 16, 3, 12
+    sentinel2_l2a = torch.randn((B, H, W, T, num_s2_bands))
+    sentinel2_l2a_mask = torch.zeros((B, H, W, T, num_s2_bands), dtype=torch.long)
+    patch_size = 4
+
+    days = torch.randint(0, 25, (B, T, 1), dtype=torch.long)
+    months = torch.randint(0, 12, (B, T, 1), dtype=torch.long)
+    years = torch.randint(2018, 2020, (B, T, 1), dtype=torch.long)
+    timestamps = torch.cat([days, months, years], dim=-1)  # Shape: (B, T, 3)
+
+    masked_sample_dict = {
+        "sentinel2_l2a": sentinel2_l2a,
+        "sentinel2_l2a_mask": sentinel2_l2a_mask,
+        "timestamps": timestamps,
+    }
+    sample = MaskedOlmoEarthSample(**masked_sample_dict)
+    _ = model(sample, patch_size=patch_size)
+
+    # band dropout will be off by default. To enable it, call
+    # model.encoder.enable_band_dropout()
+    assert model.encoder.patch_embeddings.band_dropout_rate == 0.0
+    assert model.encoder.position_encoding == "rope_3d_mixed"
+    assert model.encoder.rope_base == 10_000.0
+    assert model.encoder.rope_temporal_coordinate_scale == 1.0 / 30.0
