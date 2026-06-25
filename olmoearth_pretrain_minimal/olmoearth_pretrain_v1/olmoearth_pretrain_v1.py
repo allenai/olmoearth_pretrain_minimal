@@ -29,6 +29,15 @@ MODEL_SIZE_CONFIGS = {
         "decoder_num_heads": 8,
         "mlp_ratio": 4.0,
     },
+    "small_shallow_decoder": {
+        "decoder_depth": 4,
+        "encoder_embedding_size": 384,
+        "decoder_embedding_size": 384,
+        "encoder_depth": 12,
+        "encoder_num_heads": 6,
+        "decoder_num_heads": 6,
+        "mlp_ratio": 4.0,
+    },
     "tiny_shallow_decoder": {
         "decoder_depth": 4,
         "encoder_embedding_size": 192,
@@ -71,6 +80,7 @@ DEFAULT_MODALITIES = [
     Modality.WORLDCEREAL.name,
 ]
 
+V1_SUPPORTED_SIZES = ("nano", "tiny", "base", "large")
 # v1.1 adds a per-pixel hidden layer before patchification, band dropout, and
 # uses the linear patch embed. The hidden size differs by model size.
 V1_1_PATCH_EMBED_HIDDEN_SIZES = {
@@ -128,7 +138,13 @@ class OlmoEarthPretrain_v1(torch.nn.Module):
         if config_key not in MODEL_SIZE_CONFIGS:
             raise ValueError(
                 f"Invalid model_size: {model_size}. "
-                f"Must be one of {['nano', 'tiny', 'base', 'large']}"
+                f"Must be one of {['nano', 'small', 'tiny', 'base', 'large']}"
+            )
+
+        if model_version == "v1" and model_size not in V1_SUPPORTED_SIZES:
+            raise ValueError(
+                f"model_size {model_size!r} is not available for v1 "
+                f"Must be one of {list(V1_SUPPORTED_SIZES)}"
             )
 
         if model_version == "v1.1" and model_size not in V1_1_SUPPORTED_SIZES:

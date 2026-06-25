@@ -223,7 +223,7 @@ def test_v1_1_rejects_small() -> None:
 
 def test_v1_2_rejects_large() -> None:
     """Test that v1.2 does not support the large model size."""
-    with pytest.raises(ValueError, match="not available for v1.1"):
+    with pytest.raises(ValueError, match="not available for v1.2"):
         OlmoEarthPretrain_v1(model_size="large", model_version="v1.2")
 
 
