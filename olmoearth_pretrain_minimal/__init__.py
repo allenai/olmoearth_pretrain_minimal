@@ -7,6 +7,7 @@ from olmoearth_pretrain_minimal.model_loader import (
 )
 from olmoearth_pretrain_minimal.olmoearth_pretrain_v1 import OlmoEarthPretrain_v1
 from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.data.normalize import Normalizer
+from olmoearth_pretrain_minimal.unet_head import UNetDecoder
 
 __all__ = [
     "OlmoEarthPretrain_v1",
@@ -14,4 +15,5 @@ __all__ = [
     "load_model_from_id",
     "load_model_from_path",
     "Normalizer",
+    "UNetDecoder",
 ]
