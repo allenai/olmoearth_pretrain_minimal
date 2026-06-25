@@ -97,7 +97,7 @@ V1_1_SUPPORTED_SIZES = ("nano", "tiny", "base")
 
 # v1.2 replaces the sequence and spatial absolute encodings with rope encodings
 V1_2_POS_ENCODING = "rope_3d_mixed"
-V1_2_ROPE_MIXED_BASE = 10.0
+V1_2_ROPE_MIXED_BASE = 10_000.0
 V1_2_ROPE_TEMPORAL_COORDINATE_SCALE = 1.0 / 30.0
 V1_2_SUPPORTED_SIZES = ("nano", "small", "tiny", "base")
 
