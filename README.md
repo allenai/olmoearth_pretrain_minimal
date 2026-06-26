@@ -60,6 +60,8 @@ from olmoearth_pretrain_minimal import ModelID, load_model_from_id
 # - ModelID.OLMOEARTH_V1_BASE - 89M encoder params, 30M decoder params
 # - ModelID.OLMOEARTH_V1_LARGE - 308M encoder params, 53M decoder params
 # v1.1 models available at ModelID.{OLMOEARTH_V1_1_NANO, OLMOEARTH_V1_1_TINY, OLMOEARTH_V1_1_BASE}
+# v1.2 models available at ModelID.{OLMOEARTH_V1_2_NANO, OLMOEARTH_V1_2_TINY,
+#                                   OLMOEARTH_V1_2_SMALL, OLMOEARTH_V1_2_BASE}
 model = load_model_from_id(ModelID.OLMOEARTH_V1_BASE, load_weights=True)
 
 # Load with randomly initialized weights
