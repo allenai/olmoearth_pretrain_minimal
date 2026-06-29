@@ -36,14 +36,45 @@ uv installs everything into a venv, so to keep using python commands you can act
 
 The OlmoEarth models are trained on three satellite modalities (Sentinel 2, Sentinel 1 and Landsat) and six derived maps (OpenStreetMap, WorldCover, USDA Cropland Data Layer, SRTM DEM, WRI Canopy Height Map, and WorldCereal).
 
-**Note:** The model weights are released under the [OlmoEarth Artifact License](https://github.com/allenai/olmoearth_pretrain/blob/main/LICENSE)
-| Model Size | v1 Weights | v1.1 Weights | Encoder Params (v1 / v1.1) | Decoder Params |
-| --- | --- | --- | --- | --- |
-| Nano | [link](https://huggingface.co/allenai/OlmoEarth-v1-Nano) | [link](https://huggingface.co/allenai/OlmoEarth-v1_1-Nano) | 1.4M / 1.7M | 800K |
-| Tiny | [link](https://huggingface.co/allenai/OlmoEarth-v1-Tiny) | [link](https://huggingface.co/allenai/OlmoEarth-v1_1-Tiny) | 6.2M / 12M | 1.9M |
-| Base | [link](https://huggingface.co/allenai/OlmoEarth-v1-Base) | [link](https://huggingface.co/allenai/OlmoEarth-v1_1-Base) | 89M / 114M | 30M |
-| Large | [link](https://huggingface.co/allenai/OlmoEarth-v1-Large) | — | 308M / — | 53M |
+The model weights are released under the [OlmoEarth Artifact License](https://github.com/allenai/olmoearth_pretrain/blob/main/LICENSE)
 
+<details>
+<summary>v1 </summary>
+
+v1 is described in the [original OlmoEarth report](arxiv.org/abs/2511.13655).
+
+| Model Size | Weights | Encoder Params | Decoder Params |
+| --- | --- | --- | --- |
+| Nano | [link](https://huggingface.co/allenai/OlmoEarth-v1-Nano) | 1.4M | 800K |
+| Tiny | [link](https://huggingface.co/allenai/OlmoEarth-v1-Tiny) | 6.2M | 1.9M |
+| Base | [link](https://huggingface.co/allenai/OlmoEarth-v1-Base) | 89M | 30M |
+| Large | [link](https://huggingface.co/allenai/OlmoEarth-v1-Large) | 308M | 53M |
+</details>
+
+<details>
+<summary> v1.1 </summary>
+
+v1.1 is described in the [OlmoEarth v1.1 tech report](https://arxiv.org/abs/2605.20804v1).
+
+| Model Size | Weights | Encoder Params | Decoder Params |
+| --- | --- | --- | --- |
+| Nano | [link](https://huggingface.co/allenai/OlmoEarth-v1_1-Nano) | 5.5M | 800K |
+| Tiny | [link](https://huggingface.co/allenai/OlmoEarth-v1_1-Tiny) | 12.5M | 1.9M |
+| Base | [link](https://huggingface.co/allenai/OlmoEarth-v1_1-Base) | 114M | 30M |
+
+</details>
+
+<details open>
+v1.2 is described in the [OlmoEarth v1.2 tech report](https://arxiv.org/abs/2605.20804).
+
+| Model Size | Weights | Encoder Params | Decoder Params |
+| --- | --- | --- | --- |
+| Nano | [link](https://huggingface.co/allenai/OlmoEarth-v1_2-Nano) | 5.5M | 800K |
+| Tiny | [link](https://huggingface.co/allenai/OlmoEarth-v1_2-Tiny) | 12.5M | 1.9M |
+| Small | [link](https://huggingface.co/allenai/OlmoEarth-v1_2-Tiny) | 35.6M | 7.4M |
+| Base | [link](https://huggingface.co/allenai/OlmoEarth-v1_2-Base) | 114M | 30M |
+
+</details>
 
 ## Usage
 
