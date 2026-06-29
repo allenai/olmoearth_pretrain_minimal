@@ -65,7 +65,8 @@ v1.1 is described in the [OlmoEarth v1.1 tech report](https://arxiv.org/abs/2605
 </details>
 
 <details open>
-v1.2 is described in the [OlmoEarth v1.2 tech report](https://arxiv.org/abs/2605.20804).
+
+v1.2 is described in the [OlmoEarth v1.2 tech report](https://allenai.org/papers/olmoearth-v1-2).
 
 | Model Size | Weights | Encoder Params | Decoder Params |
 | --- | --- | --- | --- |
