@@ -22,7 +22,7 @@ dev = [
     "pre-commit>=4.3.0",
     "pytest>=7.0.0",
     "ruff>=0.12.8",
-    "olmoearth-pretrain==0.1.0",
+    "olmoearth-pretrain==0.1.1",
 ]
 
 [build-system]
