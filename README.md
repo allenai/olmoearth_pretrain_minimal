@@ -65,6 +65,7 @@ v1.1 is described in the [OlmoEarth v1.1 tech report](https://arxiv.org/abs/2605
 </details>
 
 <details open>
+<summary> v1.2 </summary>
 
 v1.2 is described in the [OlmoEarth v1.2 tech report](https://allenai.org/papers/olmoearth-v1-2).
 
