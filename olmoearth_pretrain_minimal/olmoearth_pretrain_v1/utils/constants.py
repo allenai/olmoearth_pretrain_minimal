@@ -4,7 +4,7 @@ Warning: this is only developed for raster data currently.
 """
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 
 # The highest resolution that we are working at.
 # Everything else is a factor (which is a power of 2) coarser than this resolution.
@@ -81,7 +81,7 @@ class BandSet:
         return IMAGE_TILE_SIZE // (self.resolution_factor // modality_resolution_factor)
 
 
-class TimeSpan(str, Enum):
+class TimeSpan(StrEnum):
     """Enum to distinguish data that is valid for different time ranges."""
 
     # Only one data point (not time series).

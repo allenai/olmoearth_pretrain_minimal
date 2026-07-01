@@ -1,5 +1,56 @@
-from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.nn.flexi_vit import Encoder
+import pytest
+import torch
+
+from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.nn.encodings import (
+    get_1d_sincos_pos_encoding,
+)
+from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.nn.flexi_vit import (
+    CompositeEncodings,
+    Encoder,
+)
 from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.constants import Modality
+
+
+def test_composite_encodings_compute_temporal_positions_on_the_fly() -> None:
+    """CompositeEncodings supports sequences longer than deprecated config value."""
+    with pytest.warns(DeprecationWarning):
+        encodings = CompositeEncodings(
+            embedding_size=16,
+            supported_modalities=[Modality.SENTINEL2_L2A],
+            max_sequence_length=3,
+        )
+    assert "pos_embed" not in encodings.state_dict()
+
+    tokens = torch.zeros((1, 2, 2, 5, Modality.SENTINEL2_L2A.num_band_sets, 16))
+    timestamps = torch.tensor(
+        [[[1, 0, 2020], [2, 1, 2020], [3, 2, 2020], [4, 3, 2020], [5, 4, 2020]]]
+    )
+
+    output = encodings(
+        {Modality.SENTINEL2_L2A.name: tokens},
+        timestamps=timestamps,
+        patch_size=4,
+    )
+
+    encoded = output[Modality.SENTINEL2_L2A.name]
+    assert encoded.shape == tokens.shape
+    assert torch.isfinite(encoded).all()
+
+    expected_time = get_1d_sincos_pos_encoding(torch.arange(5), 4)
+    actual_time = encoded[0, 0, 0, :, 0, 4:8]
+    assert torch.allclose(actual_time, expected_time, atol=1e-5)
+
+
+def test_composite_encodings_drops_legacy_pos_embed_on_load() -> None:
+    """Strict state dict loading ignores the removed fixed temporal table."""
+    encodings = CompositeEncodings(
+        embedding_size=16,
+        supported_modalities=[Modality.SENTINEL2_L2A],
+    )
+    state_dict = encodings.state_dict()
+    state_dict["pos_embed"] = torch.zeros((3, 4))
+
+    encodings.load_state_dict(state_dict, strict=True)
 
 
 def test_band_dropout_disabled_by_default() -> None:
