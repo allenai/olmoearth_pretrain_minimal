@@ -56,7 +56,7 @@ def normalize_sample(
     ``openstreetmap_raster``, ``worldcereal``) and non-modality fields (timestamps,
     latlon) are left untouched.
 
-    The inputs must be raw, un-normalized values (Sentinel-1 already in decibels), the
+    The inputs must be raw, un-normalized values (Sentinel1 already in decibels), the
     same expectation as the model itself, which does not normalize internally.
 
     Args:
