@@ -1,14 +1,25 @@
 """Normalizer for the OlmoEarth Pretrain dataset."""
 
+from __future__ import annotations
+
+import functools
 import json
 import logging
 from importlib.resources import files
+from typing import TYPE_CHECKING
 
 import numpy as np
+import torch
 
 from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.constants import (
+    Modality,
     ModalitySpec,
 )
+
+if TYPE_CHECKING:
+    from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.datatypes import (
+        MaskedOlmoEarthSample,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +35,71 @@ def load_computed_config() -> dict[str, dict]:
         / "computed.json"
     ).open() as f:
         return json.load(f)
+
+
+@functools.lru_cache(maxsize=1)
+def _cached_computed_config() -> dict[str, dict]:
+    """Cache the computed config so per-forward normalization avoids re-reading it."""
+    return load_computed_config()
+
+
+def normalize_sample(
+    sample: MaskedOlmoEarthSample, std_multiplier: float = 2.0
+) -> MaskedOlmoEarthSample:
+    """Normalize a sample's raw modality tensors using the pretrained statistics.
+
+    Mirrors :meth:`Normalizer.normalize` but operates directly on the torch tensors of
+    a :class:`MaskedOlmoEarthSample` (each ``(B, H, W, T, C)`` with bands last, in the
+    modality's canonical ``band_order``). Every present modality that has entries in the
+    computed config is normalized to roughly ``[0, 1]`` via
+    ``(x - (mean - k*std)) / (2*k*std)``; modalities without stats (e.g.
+    ``openstreetmap_raster``, ``worldcereal``) and non-modality fields (timestamps,
+    latlon) are left untouched.
+
+    The inputs must be raw, un-normalized values (Sentinel-1 already in decibels), the
+    same expectation as the model itself, which does not normalize internally.
+
+    Args:
+        sample: the sample whose modality tensors should be normalized.
+        std_multiplier: the ``k`` in ``mean ± k*std`` defining the normalization range.
+
+    Returns:
+        A new sample (via ``NamedTuple._replace``) with normalized modality tensors.
+    """
+    norm_config = _cached_computed_config()
+    updates: dict[str, torch.Tensor] = {}
+    for name in sample.modalities:
+        if name not in norm_config:
+            continue
+        band_order = Modality.get(name).band_order
+        stats = norm_config[name]
+        missing = [band for band in band_order if band not in stats]
+        if missing:
+            logger.warning(
+                "Skipping normalization for modality '%s': missing stats for bands %s",
+                name,
+                missing,
+            )
+            continue
+        data = getattr(sample, name)
+        means = torch.tensor(
+            [stats[band]["mean"] for band in band_order],
+            dtype=data.dtype,
+            device=data.device,
+        )
+        stds = torch.tensor(
+            [stats[band]["std"] for band in band_order],
+            dtype=data.dtype,
+            device=data.device,
+        )
+        min_vals = means - std_multiplier * stds
+        max_vals = means + std_multiplier * stds
+        # Bands are the last dim, so the (C,) min/max broadcast over (B, H, W, T, C).
+        updates[name] = (data - min_vals) / (max_vals - min_vals)
+
+    if not updates:
+        return sample
+    return sample._replace(**updates)
 
 
 class Normalizer:
