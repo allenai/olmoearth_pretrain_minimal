@@ -58,7 +58,7 @@ v1.1 is described in the [OlmoEarth v1.1 tech report](https://arxiv.org/abs/2605
 
 | Model Size | Weights | Encoder Params | Decoder Params |
 | --- | --- | --- | --- |
-| Nano | [link](https://huggingface.co/allenai/OlmoEarth-v1_1-Nano) | 5.5M | 800K |
+| Nano | [link](https://huggingface.co/allenai/OlmoEarth-v1_1-Nano) | 1.7M | 800K |
 | Tiny | [link](https://huggingface.co/allenai/OlmoEarth-v1_1-Tiny) | 12.5M | 1.9M |
 | Base | [link](https://huggingface.co/allenai/OlmoEarth-v1_1-Base) | 114M | 30M |
 
@@ -71,7 +71,7 @@ v1.2 is described in the [OlmoEarth v1.2 tech report](https://allenai.org/papers
 
 | Model Size | Weights | Encoder Params | Decoder Params |
 | --- | --- | --- | --- |
-| Nano | [link](https://huggingface.co/allenai/OlmoEarth-v1_2-Nano) | 5.5M | 800K |
+| Nano | [link](https://huggingface.co/allenai/OlmoEarth-v1_2-Nano) | 1.7M | 800K |
 | Tiny | [link](https://huggingface.co/allenai/OlmoEarth-v1_2-Tiny) | 12.5M | 1.9M |
 | Small | [link](https://huggingface.co/allenai/OlmoEarth-v1_2-Tiny) | 35.6M | 7.4M |
 | Base | [link](https://huggingface.co/allenai/OlmoEarth-v1_2-Base) | 114M | 30M |
