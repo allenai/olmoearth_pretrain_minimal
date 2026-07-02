@@ -39,8 +39,10 @@ def test_matches_numpy_normalizer() -> None:
     out = normalize_sample(sample, std_multiplier=2.0)
     ref = Normalizer(std_multiplier=2.0).normalize(Modality.SENTINEL2_L2A, s2.numpy())
 
-    assert out.sentinel2_l2a.shape == s2.shape
-    assert np.abs(out.sentinel2_l2a.numpy() - ref).max() < 1e-4
+    s2_out = out.sentinel2_l2a
+    assert s2_out is not None
+    assert s2_out.shape == s2.shape
+    assert np.abs(s2_out.numpy() - ref).max() < 1e-4
     # Original tensor untouched (a new sample is returned).
     assert torch.equal(sample.sentinel2_l2a, s2)
 
@@ -97,6 +99,7 @@ def test_std_multiplier_widens_range() -> None:
 
     narrow = normalize_sample(sample, std_multiplier=1.0).sentinel2_l2a
     wide = normalize_sample(sample, std_multiplier=4.0).sentinel2_l2a
+    assert narrow is not None and wide is not None
 
     # Wider range -> normalized values are pulled toward 0.5, i.e. smaller deviation.
     assert (wide - 0.5).abs().mean() < (narrow - 0.5).abs().mean()
