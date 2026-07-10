@@ -36,6 +36,8 @@ uv installs everything into a venv, so to keep using python commands you can act
 
 The OlmoEarth models are trained on three satellite modalities (Sentinel 2, Sentinel 1 and Landsat) and six derived maps (OpenStreetMap, WorldCover, USDA Cropland Data Layer, SRTM DEM, WRI Canopy Height Map, and WorldCereal).
 
+**Note:** the derived maps were decode-only during pretraining: the decoder learned to predict them, but the encoder never saw them as inputs. Models loaded with `load_model_from_id` or `load_model_from_path` therefore only ingest Sentinel 2, Sentinel 1 and Landsat; any other modality passed in a sample is dropped from the encoder input (with a warning), since encoding modalities the model was not trained on degrades results.
+
 The model weights are released under the [OlmoEarth Artifact License](https://github.com/allenai/olmoearth_pretrain/blob/main/LICENSE)
 
 <details>

@@ -1755,6 +1755,52 @@ class Encoder(FlexiVitBase):
         if self.has_register_tokens:
             self._init_register_tokens()
 
+        # Set by the model loading code for pretrained checkpoints: the modalities
+        # the encoder actually saw during pretraining. Decode-only modalities are
+        # in supported_modality_names (the decoder predicts them, so embedding
+        # weights exist) but were never encoder inputs, so encoding them degrades
+        # results. When set, any other modality is dropped from the input sample
+        # before encoding. None (the default) disables filtering.
+        self.encoder_input_modality_names: list[str] | None = None
+        self._warned_dropped_modalities: set[tuple[str, ...]] = set()
+
+    def restrict_input_modalities(self, modality_names: list[str]) -> None:
+        """Restrict the encoder to only ingest the given modalities.
+
+        Any other modality present in an input sample is dropped (with a warning)
+        before encoding.
+        """
+        self.encoder_input_modality_names = list(modality_names)
+
+    def drop_unencodable_modalities(
+        self, x: MaskedOlmoEarthSample
+    ) -> MaskedOlmoEarthSample:
+        """Drop modalities that the encoder was not trained to ingest.
+
+        No-op unless ``encoder_input_modality_names`` is set.
+        """
+        if self.encoder_input_modality_names is None:
+            return x
+        dropped = [
+            modality
+            for modality in x.modalities
+            if modality not in self.encoder_input_modality_names
+        ]
+        if not dropped:
+            return x
+        warn_key = tuple(sorted(dropped))
+        if warn_key not in self._warned_dropped_modalities:
+            self._warned_dropped_modalities.add(warn_key)
+            logger.warning(
+                f"Dropping modalities {dropped} from the encoder input: this model "
+                f"was only trained to encode {self.encoder_input_modality_names}."
+            )
+        sample_dict = x.as_dict()
+        for modality in dropped:
+            sample_dict[modality] = None
+            sample_dict[x.get_masked_modality_name(modality)] = None
+        return MaskedOlmoEarthSample(**sample_dict)
+
     def enable_band_dropout(self) -> None:
         """Enable band dropout using the configured rate.
 
@@ -2165,6 +2211,7 @@ class Encoder(FlexiVitBase):
         if fast_pass and token_exit_cfg is not None:
             raise ValueError("token_exit_cfg cannot be set when fast_pass is True")
 
+        x = self.drop_unencodable_modalities(x)
         patchified_tokens_and_masks = self.patch_embeddings.forward(x, patch_size)
         if token_exit_cfg is None or any(
             [exit_depth > 0 for exit_depth in token_exit_cfg.values()]
