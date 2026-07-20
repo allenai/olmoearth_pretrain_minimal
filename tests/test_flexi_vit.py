@@ -1,4 +1,3 @@
-import pytest
 import torch
 
 from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.nn.encodings import (
@@ -13,13 +12,12 @@ from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.constants import Mod
 
 def test_composite_encodings_compute_temporal_positions_on_the_fly() -> None:
     """CompositeEncodings supports sequences longer than deprecated config value."""
-    with pytest.warns(DeprecationWarning):
-        encodings = CompositeEncodings(
-            embedding_size=16,
-            supported_modalities=[Modality.SENTINEL2_L2A],
-            max_sequence_length=3,
-        )
-    assert "pos_embed" not in encodings.state_dict()
+    encodings = CompositeEncodings(
+        embedding_size=16,
+        supported_modalities=[Modality.SENTINEL2_L2A],
+        max_sequence_length=3,
+    )
+    assert encodings.pos_embed.shape == (3, 4)
 
     tokens = torch.zeros((1, 2, 2, 5, Modality.SENTINEL2_L2A.num_band_sets, 16))
     timestamps = torch.tensor(
@@ -41,16 +39,18 @@ def test_composite_encodings_compute_temporal_positions_on_the_fly() -> None:
     assert torch.allclose(actual_time, expected_time, atol=1e-5)
 
 
-def test_composite_encodings_drops_legacy_pos_embed_on_load() -> None:
-    """Strict state dict loading ignores the removed fixed temporal table."""
+def test_composite_encodings_loads_temporal_position_table() -> None:
+    """Strict state dict loading restores the frozen temporal table."""
     encodings = CompositeEncodings(
         embedding_size=16,
         supported_modalities=[Modality.SENTINEL2_L2A],
+        max_sequence_length=3,
     )
     state_dict = encodings.state_dict()
     state_dict["pos_embed"] = torch.zeros((3, 4))
 
     encodings.load_state_dict(state_dict, strict=True)
+    assert torch.equal(encodings.pos_embed, torch.zeros((3, 4)))
 
 
 def test_band_dropout_disabled_by_default() -> None:

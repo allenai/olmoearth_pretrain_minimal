@@ -2,7 +2,6 @@
 
 import logging
 import math
-import warnings
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, NamedTuple
@@ -854,8 +853,8 @@ class CompositeEncodings(nn.Module):
             embedding_size: Size of token embeddings
             supported_modalities: Which modalities from Modality this model
                 instantiation supports
-            max_sequence_length: Deprecated, has no effect. Temporal position
-                encodings are now computed on-the-fly.
+            max_sequence_length: Size of the checkpoint-compatible temporal
+                encoding table. Longer sequences are computed on-the-fly.
             learnable_channel_embeddings: Whether to use learnable channel embeddings
             random_channel_embeddings: Initialize channel embeddings randomly (zeros if False)
             tokenization_config: Optional config for custom band groupings
@@ -872,13 +871,8 @@ class CompositeEncodings(nn.Module):
                 f"position_encoding must be one of {PositionEncoding.values()}, "
                 f"got {position_encoding}"
             )
-        if max_sequence_length is not None:
-            warnings.warn(
-                "max_sequence_length is deprecated and has no effect. "
-                "Temporal position encodings are now computed on-the-fly.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
+        if max_sequence_length is None:
+            max_sequence_length = 12
         self.embedding_size = embedding_size
         self.supported_modalities = supported_modalities
         self.supported_modality_names = [
@@ -892,10 +886,15 @@ class CompositeEncodings(nn.Module):
         # we have 4 embeddings types (pos_in_time, pos_in_space, month, channel) so each get
         # 0.25 of the dimension
         self.embedding_dim_per_embedding_type = int(embedding_size * 0.25)
-        # Temporal position encodings are computed on-the-fly via
-        # get_1d_sincos_pos_encoding so that any number of timesteps is supported
-        # without a pre-allocated table.
-        self._register_load_state_dict_pre_hook(self._drop_pos_embed_hook)
+        # Retain the frozen table for exact compatibility with existing
+        # checkpoints. Positions beyond it are computed on-the-fly.
+        self.pos_embed = nn.Parameter(
+            get_1d_sincos_pos_encoding(
+                torch.arange(max_sequence_length),
+                self.embedding_dim_per_embedding_type,
+            ),
+            requires_grad=False,
+        )
         # Month encodings
         month_tab = get_month_encoding_table(self.embedding_dim_per_embedding_type)
         self.month_embed = nn.Embedding.from_pretrained(month_tab, freeze=True)
@@ -934,15 +933,6 @@ class CompositeEncodings(nn.Module):
             if isinstance(m, nn.Linear) and m.bias is not None:
                 # TODO: fix the dtype here
                 nn.init.constant_(m.bias, 0).to(torch.float32)
-
-    @staticmethod
-    def _drop_pos_embed_hook(
-        state_dict: dict, prefix: str, *args: object, **kwargs: object
-    ) -> None:
-        """Drop legacy pos_embed from old checkpoints so strict loading succeeds."""
-        key = prefix + "pos_embed"
-        if key in state_dict:
-            del state_dict[key]
 
     @staticmethod
     def calculate_gsd_ratio(input_res: float, patch_size: int) -> float:
@@ -1043,11 +1033,13 @@ class CompositeEncodings(nn.Module):
             # Slot-index temporal encoding (additive). Skipped when 3D RoPE
             # handles temporal position rotationally inside attention.
             if not PositionEncoding.is_3d_rope(self.position_encoding):
-                # Time position encodings (computed on-the-fly for arbitrary t)
-                pos_embed = get_1d_sincos_pos_encoding(
-                    torch.arange(t, device=device),
-                    self.embedding_dim_per_embedding_type,
-                )
+                if t <= self.pos_embed.shape[0]:
+                    pos_embed = self.pos_embed[:t].to(device)
+                else:
+                    pos_embed = get_1d_sincos_pos_encoding(
+                        torch.arange(t, device=device),
+                        self.embedding_dim_per_embedding_type,
+                    )
                 time_embed = repeat(pos_embed, f"t d -> {ein_string}", **ein_dict)
                 modality_embed[..., n : n * 2] += time_embed
 
