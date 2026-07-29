@@ -1,5 +1,6 @@
 """Tests for model loading functionality."""
 
+import json
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,7 @@ from olmoearth_pretrain_minimal import (
     load_model_from_id,
     load_model_from_path,
 )
+from olmoearth_pretrain_minimal.model_loader import ENCODER_INPUT_MODALITY_NAMES
 from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.datatypes import (
     MaskedOlmoEarthSample,
 )
@@ -296,3 +298,86 @@ def test_load_v1_2_config() -> None:
     assert model.encoder.position_encoding == "rope_3d_mixed"
     assert model.encoder.rope_base == 10_000.0
     assert model.encoder.rope_temporal_coordinate_scale == 1.0 / 30.0
+
+
+EXPECTED_ENCODER_INPUTS = ["sentinel2_l2a", "sentinel1", "landsat"]
+
+
+def test_all_model_ids_have_registered_encoder_input_modalities() -> None:
+    """Every ModelID must explicitly declare its encoder input modalities.
+
+    If this fails for a newly added model, add an entry to
+    ENCODER_INPUT_MODALITY_NAMES listing the modalities its encoder was trained on.
+    """
+    for model_id in ModelID:
+        assert model_id in ENCODER_INPUT_MODALITY_NAMES
+
+
+def test_load_from_id_restricts_encoder_inputs() -> None:
+    """Loading a pretrained model restricts the encoder to trained modalities."""
+    model = load_model_from_id(ModelID.OLMOEARTH_V1_NANO, load_weights=False)
+    assert model.encoder.encoder_input_modality_names == EXPECTED_ENCODER_INPUTS
+    assert model.target_encoder.encoder_input_modality_names == EXPECTED_ENCODER_INPUTS
+
+
+def test_load_from_path_restricts_encoder_inputs() -> None:
+    """Loading from a path derives the encoder input modalities from the config."""
+    model = load_model_from_path(model_path=ARTIFACTS / "v1_2_nano", load_weights=False)
+    assert model.encoder.encoder_input_modality_names == EXPECTED_ENCODER_INPUTS
+
+
+def test_load_from_path_without_decode_only_modalities_raises(tmp_path: Path) -> None:
+    """A config that doesn't record decode-only modalities must fail loudly."""
+    with (ARTIFACTS / "v1_2_nano" / "config.json").open() as f:
+        config_dict = json.load(f)
+    for section in ("train_module", "data_loader"):
+        del config_dict[section]["masking_config"]["strategy_config"][
+            "only_decode_modalities"
+        ]
+    with (tmp_path / "config.json").open("w") as f:
+        json.dump(config_dict, f)
+
+    with pytest.raises(ValueError, match="Explicitly mark"):
+        load_model_from_path(model_path=tmp_path, load_weights=False)
+
+
+def test_encoder_drops_untrained_modalities() -> None:
+    """Decode-only modalities are dropped from the encoder input."""
+    model = load_model_from_id(ModelID.OLMOEARTH_V1_NANO, load_weights=False)
+    model.eval()
+
+    B, H, W, T, num_s2_bands = 1, 16, 16, 3, 12
+    patch_size = 4
+    days = torch.randint(0, 25, (B, T, 1), dtype=torch.long)
+    months = torch.randint(0, 12, (B, T, 1), dtype=torch.long)
+    years = torch.randint(2018, 2020, (B, T, 1), dtype=torch.long)
+    timestamps = torch.cat([days, months, years], dim=-1)
+
+    sentinel2_l2a = torch.randn((B, H, W, T, num_s2_bands))
+    sentinel2_l2a_mask = torch.zeros((B, H, W, T, num_s2_bands), dtype=torch.long)
+    s2_only_sample = MaskedOlmoEarthSample(
+        timestamps=timestamps,
+        sentinel2_l2a=sentinel2_l2a,
+        sentinel2_l2a_mask=sentinel2_l2a_mask,
+    )
+    # worldcover was decode-only during pretraining, so the encoder should
+    # ignore it even though the model config supports it
+    with_worldcover_sample = MaskedOlmoEarthSample(
+        timestamps=timestamps,
+        sentinel2_l2a=sentinel2_l2a,
+        sentinel2_l2a_mask=sentinel2_l2a_mask,
+        worldcover=torch.randn((B, H, W, 1)),
+        worldcover_mask=torch.zeros((B, H, W, 1), dtype=torch.long),
+    )
+
+    with torch.no_grad():
+        s2_only_output = model.encoder(s2_only_sample, patch_size=patch_size)
+        with_worldcover_output = model.encoder(
+            with_worldcover_sample, patch_size=patch_size
+        )
+
+    assert with_worldcover_output["tokens_and_masks"].worldcover is None
+    torch.testing.assert_close(
+        with_worldcover_output["tokens_and_masks"].sentinel2_l2a,
+        s2_only_output["tokens_and_masks"].sentinel2_l2a,
+    )
