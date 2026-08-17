@@ -840,7 +840,7 @@ class CompositeEncodings(nn.Module):
         self,
         embedding_size: int,
         supported_modalities: list[ModalitySpec],
-        max_sequence_length: int,
+        max_sequence_length: int | None = None,
         learnable_channel_embeddings: bool = True,
         random_channel_embeddings: bool = False,
         tokenization_config: TokenizationConfig | None = None,
@@ -853,7 +853,8 @@ class CompositeEncodings(nn.Module):
             embedding_size: Size of token embeddings
             supported_modalities: Which modalities from Modality this model
                 instantiation supports
-            max_sequence_length: Maximum sequence length
+            max_sequence_length: Size of the checkpoint-compatible temporal
+                encoding table. Longer sequences are computed on-the-fly.
             learnable_channel_embeddings: Whether to use learnable channel embeddings
             random_channel_embeddings: Initialize channel embeddings randomly (zeros if False)
             tokenization_config: Optional config for custom band groupings
@@ -870,6 +871,8 @@ class CompositeEncodings(nn.Module):
                 f"position_encoding must be one of {PositionEncoding.values()}, "
                 f"got {position_encoding}"
             )
+        if max_sequence_length is None:
+            max_sequence_length = 12
         self.embedding_size = embedding_size
         self.supported_modalities = supported_modalities
         self.supported_modality_names = [
@@ -878,15 +881,13 @@ class CompositeEncodings(nn.Module):
         self.tokenization_config = tokenization_config or TokenizationConfig()
         self.position_encoding = position_encoding
         self.embedding_size = embedding_size
-        self.max_sequence_length = (
-            max_sequence_length  # This max sequence length is a time dim thing
-        )
         # TODO: we need to be able to calculate the size of the param based on what types of embeddings it will get
 
         # we have 4 embeddings types (pos_in_time, pos_in_space, month, channel) so each get
         # 0.25 of the dimension
         self.embedding_dim_per_embedding_type = int(embedding_size * 0.25)
-        # Position encodings for time dimension initialized to 1D sinusoidal encodings
+        # Retain the frozen table for exact compatibility with existing
+        # checkpoints. Positions beyond it are computed on-the-fly.
         self.pos_embed = nn.Parameter(
             get_1d_sincos_pos_encoding(
                 torch.arange(max_sequence_length),
@@ -1032,10 +1033,15 @@ class CompositeEncodings(nn.Module):
             # Slot-index temporal encoding (additive). Skipped when 3D RoPE
             # handles temporal position rotationally inside attention.
             if not PositionEncoding.is_3d_rope(self.position_encoding):
-                time_embed = repeat(
-                    self.pos_embed[:t], f"t d -> {ein_string}", **ein_dict
-                )
-                modality_embed[..., n : n * 2] += time_embed.to(device)
+                if t <= self.pos_embed.shape[0]:
+                    pos_embed = self.pos_embed[:t].to(device)
+                else:
+                    pos_embed = get_1d_sincos_pos_encoding(
+                        torch.arange(t, device=device),
+                        self.embedding_dim_per_embedding_type,
+                    )
+                time_embed = repeat(pos_embed, f"t d -> {ein_string}", **ein_dict)
+                modality_embed[..., n : n * 2] += time_embed
 
             # Month encodings stay additive in all modes (calendar/seasonal
             # signal is orthogonal to slot-index).
