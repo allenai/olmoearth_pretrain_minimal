@@ -85,6 +85,7 @@ V1_SUPPORTED_SIZES = ("nano", "tiny", "base", "large")
 # uses the linear patch embed. The hidden size differs by model size.
 V1_1_PATCH_EMBED_HIDDEN_SIZES = {
     "nano": [12],
+    "small": [64],
     "tiny": [64],
     "base": [64],
 }
