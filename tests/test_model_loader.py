@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from typing import Literal
 
 import pytest
 import torch
@@ -400,11 +401,14 @@ def test_encoder_drops_untrained_modalities() -> None:
         for size in sizes
     ],
 )
-def test_every_supported_size_builds(model_version: str, model_size: str) -> None:
+def test_every_supported_size_builds(
+    model_version: Literal["v1", "v1.1", "v1.2"],
+    model_size: Literal["nano", "tiny", "small", "base", "large"],
+) -> None:
     """Every size a version declares support for must actually build.
 
-    v1.2 declared support for "small" before PATCH_EMBED_HIDDEN_SIZES had an entry for
-    it, so building it raised KeyError: 'small'.
+    v1.2 declared support for "small" before it had a patch embed hidden size for it,
+    so building it raised KeyError: 'small'.
     """
     model = OlmoEarthPretrain_v1(model_size=model_size, model_version=model_version)
     assert sum(p.numel() for p in model.parameters()) > 0
