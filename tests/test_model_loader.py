@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from typing import Literal
 
 import pytest
 import torch
@@ -13,6 +14,11 @@ from olmoearth_pretrain_minimal import (
     load_model_from_path,
 )
 from olmoearth_pretrain_minimal.model_loader import ENCODER_INPUT_MODALITY_NAMES
+from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.olmoearth_pretrain_v1 import (
+    V1_1_SUPPORTED_SIZES,
+    V1_2_SUPPORTED_SIZES,
+    V1_SUPPORTED_SIZES,
+)
 from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.datatypes import (
     MaskedOlmoEarthSample,
 )
@@ -381,3 +387,28 @@ def test_encoder_drops_untrained_modalities() -> None:
         with_worldcover_output["tokens_and_masks"].sentinel2_l2a,
         s2_only_output["tokens_and_masks"].sentinel2_l2a,
     )
+
+
+@pytest.mark.parametrize(
+    ("model_version", "model_size"),
+    [
+        (version, size)
+        for version, sizes in (
+            ("v1", V1_SUPPORTED_SIZES),
+            ("v1.1", V1_1_SUPPORTED_SIZES),
+            ("v1.2", V1_2_SUPPORTED_SIZES),
+        )
+        for size in sizes
+    ],
+)
+def test_every_supported_size_builds(
+    model_version: Literal["v1", "v1.1", "v1.2"],
+    model_size: Literal["nano", "tiny", "small", "base", "large"],
+) -> None:
+    """Every size a version declares support for must actually build.
+
+    v1.2 declared support for "small" before it had a patch embed hidden size for it,
+    so building it raised KeyError: 'small'.
+    """
+    model = OlmoEarthPretrain_v1(model_size=model_size, model_version=model_version)
+    assert sum(p.numel() for p in model.parameters()) > 0

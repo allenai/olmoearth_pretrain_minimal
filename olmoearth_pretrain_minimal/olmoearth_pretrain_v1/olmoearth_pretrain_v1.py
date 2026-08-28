@@ -100,6 +100,8 @@ V1_2_POS_ENCODING = "rope_3d_mixed"
 V1_2_ROPE_MIXED_BASE = 10_000.0
 V1_2_ROPE_TEMPORAL_COORDINATE_SCALE = 1.0 / 30.0
 V1_2_SUPPORTED_SIZES = ("nano", "small", "tiny", "base")
+# v1.2 adds the small size, which v1.1 does not have.
+V1_2_PATCH_EMBED_HIDDEN_SIZES = V1_1_PATCH_EMBED_HIDDEN_SIZES | {"small": [64]}
 
 
 class OlmoEarthPretrain_v1(torch.nn.Module):
@@ -166,9 +168,14 @@ class OlmoEarthPretrain_v1(torch.nn.Module):
 
         encoder_extra_kwargs: dict[str, Any] = {}
         if model_version in ["v1.1", "v1.2"]:
+            patch_embed_hidden_sizes = (
+                V1_2_PATCH_EMBED_HIDDEN_SIZES
+                if model_version == "v1.2"
+                else V1_1_PATCH_EMBED_HIDDEN_SIZES
+            )
             encoder_extra_kwargs = {
                 "use_linear_patch_embed": True,
-                "patch_embed_hidden_sizes": V1_1_PATCH_EMBED_HIDDEN_SIZES[model_size],
+                "patch_embed_hidden_sizes": patch_embed_hidden_sizes[model_size],
                 "band_dropout_rate": V1_1_BAND_DROPOUT_RATE,
                 "random_band_dropout": True,
                 "band_dropout_modalities": V1_1_BAND_DROPOUT_MODALITIES,
