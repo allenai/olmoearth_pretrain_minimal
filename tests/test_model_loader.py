@@ -403,8 +403,8 @@ def test_encoder_drops_untrained_modalities() -> None:
 def test_every_supported_size_builds(model_version: str, model_size: str) -> None:
     """Every size a version declares support for must actually build.
 
-    v1.2 declared support for "small" before V1_1_PATCH_EMBED_HIDDEN_SIZES had an entry
-    for it, so building it raised KeyError: 'small'.
+    v1.2 declared support for "small" before PATCH_EMBED_HIDDEN_SIZES had an entry for
+    it, so building it raised KeyError: 'small'.
     """
     model = OlmoEarthPretrain_v1(model_size=model_size, model_version=model_version)
     assert sum(p.numel() for p in model.parameters()) > 0
