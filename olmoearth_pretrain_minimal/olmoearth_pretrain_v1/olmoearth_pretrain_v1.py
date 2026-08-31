@@ -9,6 +9,9 @@ from typing import Any, Literal
 
 import torch
 
+from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.data.normalize import (
+    normalize_sample,
+)
 from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.nn.flexi_vit import (
     EncoderConfig,
     PredictorConfig,
@@ -17,6 +20,9 @@ from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.nn.latent_mim import (
     LatentMIMConfig,
 )
 from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.constants import Modality
+from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.datatypes import (
+    MaskedOlmoEarthSample,
+)
 
 # Model size configurations matching the official OlmoEarth v1 models
 MODEL_SIZE_CONFIGS = {
@@ -120,6 +126,8 @@ class OlmoEarthPretrain_v1(torch.nn.Module):
         max_patch_size: int = 8,
         max_sequence_length: int = 12,
         drop_path: float = 0.1,
+        normalize: bool = False,
+        normalize_std_multiplier: float = 2.0,
     ) -> None:
         """Initialize an OlmoEarth Pretrain v1 model.
 
@@ -132,8 +140,18 @@ class OlmoEarthPretrain_v1(torch.nn.Module):
             max_patch_size: Maximum patch size for the encoder.
             max_sequence_length: Maximum sequence length.
             drop_path: Drop path rate for regularization.
+            normalize: whether to normalize the input sample inside ``forward`` using
+                the pretrained statistics (see
+                :func:`~olmoearth_pretrain_minimal.olmoearth_pretrain_v1.data.normalize.normalize_sample`).
+                Defaults to False, in which case inputs are assumed to already be
+                normalized. When True, pass raw, un-normalized values (Sentinel-1 in
+                decibels) with bands in the canonical ``band_order``.
+            normalize_std_multiplier: the ``mean ± k*std`` multiplier used when
+                ``normalize=True``.
         """
         super().__init__()
+        self.normalize = normalize
+        self.normalize_std_multiplier = normalize_std_multiplier
 
         # Map user-facing model size to internal config key with shallow_decoder suffix
         config_key = f"{model_size}_shallow_decoder"
@@ -222,7 +240,22 @@ class OlmoEarthPretrain_v1(torch.nn.Module):
         self.model = model_config_obj.build()
 
     def forward(self, *args: Any, **kwargs: Any) -> Any:
-        """Forward pass through the model."""
+        """Forward pass through the model.
+
+        When ``self.normalize`` is set, the input :class:`MaskedOlmoEarthSample`
+        (positional or the ``x`` keyword) is normalized with the pretrained statistics
+        before being passed to the underlying model.
+        """
+        if self.normalize:
+            if args and isinstance(args[0], MaskedOlmoEarthSample):
+                args = (
+                    normalize_sample(args[0], self.normalize_std_multiplier),
+                    *args[1:],
+                )
+            elif isinstance(kwargs.get("x"), MaskedOlmoEarthSample):
+                kwargs["x"] = normalize_sample(
+                    kwargs["x"], self.normalize_std_multiplier
+                )
         return self.model(*args, **kwargs)
 
     def __getattr__(self, name: str) -> Any:
