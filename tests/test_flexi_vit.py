@@ -17,7 +17,7 @@ def test_composite_encodings_compute_temporal_positions_on_the_fly() -> None:
         supported_modalities=[Modality.SENTINEL2_L2A],
         max_sequence_length=3,
     )
-    assert encodings.pos_embed.shape == (3, 4)
+    assert not hasattr(encodings, "pos_embed")
 
     tokens = torch.zeros((1, 2, 2, 5, Modality.SENTINEL2_L2A.num_band_sets, 16))
     timestamps = torch.tensor(
@@ -39,18 +39,52 @@ def test_composite_encodings_compute_temporal_positions_on_the_fly() -> None:
     assert torch.allclose(actual_time, expected_time, atol=1e-5)
 
 
-def test_composite_encodings_loads_temporal_position_table() -> None:
-    """Strict state dict loading restores the frozen temporal table."""
+def test_composite_encodings_drops_legacy_pos_embed() -> None:
+    """Strict loading tolerates checkpoints that carry the legacy pos_embed table."""
     encodings = CompositeEncodings(
         embedding_size=16,
         supported_modalities=[Modality.SENTINEL2_L2A],
         max_sequence_length=3,
     )
     state_dict = encodings.state_dict()
-    state_dict["pos_embed"] = torch.zeros((3, 4))
+    assert "pos_embed" not in state_dict
+    state_dict["pos_embed"] = torch.zeros((12, 4))
 
     encodings.load_state_dict(state_dict, strict=True)
-    assert torch.equal(encodings.pos_embed, torch.zeros((3, 4)))
+    assert "pos_embed" not in encodings.state_dict()
+
+
+def test_composite_encodings_loads_without_pos_embed() -> None:
+    """Strict loading succeeds for checkpoints without a pos_embed key."""
+    encodings = CompositeEncodings(
+        embedding_size=16,
+        supported_modalities=[Modality.SENTINEL2_L2A],
+        max_sequence_length=3,
+    )
+    state_dict = encodings.state_dict()
+    assert "pos_embed" not in state_dict
+    encodings.load_state_dict(state_dict, strict=True)
+
+
+def test_encoder_drops_legacy_pos_embed_with_prefix() -> None:
+    """The pre-hook handles the module prefix used by full Encoder state dicts."""
+    encoder = Encoder(
+        embedding_size=8,
+        max_patch_size=8,
+        min_patch_size=1,
+        num_heads=2,
+        mlp_ratio=4.0,
+        depth=2,
+        drop_path=0.1,
+        supported_modalities=[Modality.SENTINEL2_L2A, Modality.LATLON],
+        max_sequence_length=12,
+    )
+    state_dict = encoder.state_dict()
+    assert "composite_encodings.pos_embed" not in state_dict
+    state_dict["composite_encodings.pos_embed"] = torch.zeros((12, 2))
+
+    encoder.load_state_dict(state_dict, strict=True)
+    assert "composite_encodings.pos_embed" not in encoder.state_dict()
 
 
 def test_band_dropout_disabled_by_default() -> None:

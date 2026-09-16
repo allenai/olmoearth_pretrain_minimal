@@ -1,6 +1,6 @@
 [project]
 name = "olmoearth-pretrain-minimal"
-version = "0.0.8"
+version = "0.0.9"
 description = "Minimal package for loading and initializing OlmoEarth models"
 authors = [
     { name = "OlmoEarth Team" },
@@ -22,7 +22,7 @@ dev = [
     "pre-commit>=4.3.0",
     "pytest>=7.0.0",
     "ruff>=0.12.8",
-    "olmoearth-pretrain==0.1.1",
+    "olmoearth-pretrain==0.1.2",
 ]
 
 [build-system]
