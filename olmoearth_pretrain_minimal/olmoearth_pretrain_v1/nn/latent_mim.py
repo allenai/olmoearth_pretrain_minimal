@@ -27,6 +27,45 @@ from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.datatypes import (
 logger = logging.getLogger(__name__)
 
 
+class FrozenTargetProjection(nn.Module):
+    """Frozen projection-only target encoder.
+
+    When every modality exits at depth 0 and the target is never EMA-updated, the
+    full target-encoder copy is dead weight: the target is just the frozen initial
+    projection. This module deepcopies only the ``patch_embeddings`` that exit-0
+    actually runs, so the transformer blocks are never copied or saved.
+
+    ``project_aggregated`` is intentionally not computed: the latent-MIM train
+    modules only consume ``tokens_and_masks`` from the target output.
+    """
+
+    def __init__(self, encoder: nn.Module):
+        """Copy and freeze the projection submodules of ``encoder``."""
+        super().__init__()
+        self.patch_embeddings = deepcopy(encoder.patch_embeddings)
+        for p in self.parameters():
+            p.requires_grad = False
+
+    def forward(
+        self,
+        x: MaskedOlmoEarthSample,
+        patch_size: int,
+        token_exit_cfg: dict[str, int] | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """Compute exit-0 targets: the patch embeddings."""
+        if token_exit_cfg is not None and any(
+            exit_depth > 0 for exit_depth in token_exit_cfg.values()
+        ):
+            raise ValueError(
+                "FrozenTargetProjection only supports token_exit_cfg with all "
+                f"exit depths 0, got {token_exit_cfg}. Use the full target "
+                "encoder (projection_only_target=False) for deeper exits."
+            )
+        patchified_tokens_and_masks = self.patch_embeddings.forward(x, patch_size)
+        return {"tokens_and_masks": TokensAndMasks(**patchified_tokens_and_masks)}
+
+
 class LatentMIM(nn.Module, DistributedMixins):
     """Latent MIM Style."""
 
@@ -37,6 +76,7 @@ class LatentMIM(nn.Module, DistributedMixins):
         encoder: nn.Module,
         decoder: nn.Module,
         reconstructor: torch.nn.Module | None = None,
+        projection_only_target: bool = False,
     ):
         """Initialize the Latent MIM Style.
 
@@ -44,12 +84,19 @@ class LatentMIM(nn.Module, DistributedMixins):
             encoder: The encoder to use.
             decoder: The decoder to use.
             reconstructor: Optional reconstructor for auto-encoding.
+            projection_only_target: If True, the target encoder is only the frozen
+                initial projection (patch embeddings) instead of a full copy of the
+                encoder.
         """
         super().__init__()
         self.encoder = encoder
         self.decoder = decoder
         self.reconstructor = reconstructor
-        self.target_encoder = deepcopy(self.encoder)
+        self.target_encoder: nn.Module
+        if projection_only_target:
+            self.target_encoder = FrozenTargetProjection(self.encoder)
+        else:
+            self.target_encoder = deepcopy(self.encoder)
         for p in self.target_encoder.parameters():
             p.requires_grad = False
 
@@ -76,6 +123,9 @@ class LatentMIM(nn.Module, DistributedMixins):
         latent, latent_projected_and_pooled, decoder_kwargs = unpack_encoder_output(
             output_dict
         )
+        # The decoder reads only the registers; the Perceiver's student readout is
+        # for training losses (and evals), never a decoder input.
+        decoder_kwargs.pop("student_registers", None)
         extra_metrics = {}
         if token_norm_stats is not None:
             extra_metrics["token_norm_stats"] = token_norm_stats
@@ -108,7 +158,8 @@ class LatentMIM(nn.Module, DistributedMixins):
 
         self.encoder.apply_fsdp(**fsdp_config)
         self.decoder.apply_fsdp(**fsdp_config)
-        self.target_encoder.apply_fsdp(**fsdp_config)
+        if hasattr(self.target_encoder, "apply_fsdp"):
+            self.target_encoder.apply_fsdp(**fsdp_config)
         if self.reconstructor:
             self.reconstructor.apply_fsdp(**fsdp_config)
         # TODO: More finegrained wrapping of the encoder transformer layers next time
@@ -122,8 +173,9 @@ class LatentMIM(nn.Module, DistributedMixins):
         logger.info("Applied torch.compile to the encoder")
         self.decoder.apply_compile()
         logger.info("Applied torch.compile to the decoder")
-        self.target_encoder.apply_compile()
-        logger.info("Applied torch.compile to the target encoder")
+        if hasattr(self.target_encoder, "apply_compile"):
+            self.target_encoder.apply_compile()
+            logger.info("Applied torch.compile to the target encoder")
 
 
 @dataclass
@@ -133,6 +185,7 @@ class LatentMIMConfig(Config):
     encoder_config: Config
     decoder_config: Config
     reconstructor_config: Config | None = None
+    projection_only_target: bool = False
 
     def validate(self) -> None:
         """Validate the configuration."""
@@ -168,4 +221,5 @@ class LatentMIMConfig(Config):
             encoder=encoder,
             decoder=decoder,
             reconstructor=reconstructor,
+            projection_only_target=self.projection_only_target,
         )

@@ -58,6 +58,8 @@ class ModelID(StrEnum):
     OLMOEARTH_V1_2_SMALL = "OlmoEarth-v1_2-Small"
     OLMOEARTH_V1_2_BASE = "OlmoEarth-v1_2-Base"
 
+    OLMOEARTH_V1_3_BASE = "OlmoEarth-v1_3-Base"
+
     def repo_id(self) -> str:
         """Return the Hugging Face repo ID for this model."""
         return f"allenai/{self.value}"
@@ -87,6 +89,7 @@ ENCODER_INPUT_MODALITY_NAMES: dict[ModelID, list[str]] = {
     ModelID.OLMOEARTH_V1_2_TINY: _V1_FAMILY_ENCODER_INPUT_MODALITIES,
     ModelID.OLMOEARTH_V1_2_SMALL: _V1_FAMILY_ENCODER_INPUT_MODALITIES,
     ModelID.OLMOEARTH_V1_2_BASE: _V1_FAMILY_ENCODER_INPUT_MODALITIES,
+    ModelID.OLMOEARTH_V1_3_BASE: _V1_FAMILY_ENCODER_INPUT_MODALITIES,
 }
 
 
@@ -104,9 +107,12 @@ def _get_encoder_input_modalities(model_id: ModelID) -> list[str]:
 def _restrict_encoder_inputs(model: torch.nn.Module, modality_names: list[str]) -> None:
     """Restrict the model's encoders to the modalities they were trained on."""
     model.encoder.restrict_input_modalities(modality_names)
-    target_encoder = getattr(model, "target_encoder", None)
-    if target_encoder is not None:
-        target_encoder.restrict_input_modalities(modality_names)
+    # A projection-only target (FrozenTargetProjection) has no input filtering.
+    restrict_target = getattr(
+        getattr(model, "target_encoder", None), "restrict_input_modalities", None
+    )
+    if restrict_target is not None:
+        restrict_target(modality_names)
 
 
 def load_model_from_id(model_id: ModelID, load_weights: bool = True) -> torch.nn.Module:
@@ -216,8 +222,20 @@ def _encoder_input_modalities_from_config(config_dict: dict) -> list[str]:
     return [modality for modality in supported if modality not in decode_only]
 
 
+# Training-only heads that pretraining checkpoints may carry but this package does
+# not build (they read the Perceiver register grid to compute auxiliary losses).
+_TRAINING_ONLY_STATE_DICT_PREFIXES = (
+    "supervision_head.",
+    "register_distillation_head.",
+)
+
+
 def _load_state_dict(path: UPath) -> dict[str, torch.Tensor]:
     """Load the model state dict from the specified path."""
     with path.open("rb") as f:
         state_dict = torch.load(f, map_location="cpu")
-    return state_dict
+    return {
+        k: v
+        for k, v in state_dict.items()
+        if not k.startswith(_TRAINING_ONLY_STATE_DICT_PREFIXES)
+    }
