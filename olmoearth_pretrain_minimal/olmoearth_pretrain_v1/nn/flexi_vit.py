@@ -1355,7 +1355,6 @@ class FlexiVitBase(nn.Module):
         return (h_max, w_max)
 
     @staticmethod
-    @staticmethod
     def _zero_rope_positions(tokens: Tensor, coord_dim: int) -> Tensor:
         """Create zero RoPE coordinates matching token layout."""
         return torch.zeros(
@@ -1715,7 +1714,6 @@ class Perceiver(nn.Module):
             )
         self.register = nn.Parameter(torch.empty(1, register_dim))
         nn.init.trunc_normal_(self.register, std=0.02)
-        # The read + latent transformer run on small unpacked [B, N, D] tensors with an
         num_read_blocks = latent_transformer_depth
         self.per_depth_read_proj = per_depth_read_proj and num_read_blocks > 1
         if self.per_depth_read_proj:
@@ -1860,10 +1858,8 @@ class Perceiver(nn.Module):
         else:
             kv = self.kv_proj(self.input_norm(patch_tokens))
             kv_per_read = [kv] * len(self.read_blocks)
-        reference_tokens = patch_tokens
-        batch_size = reference_tokens.shape[0]
-        register_grid = spatial_grid
-        num_registers = register_grid[0] * register_grid[1]
+        batch_size = patch_tokens.shape[0]
+        num_registers = spatial_grid[0] * spatial_grid[1]
         # Clone the single learned latent across the batch and all grid cells; RoPE on
         # the per-cell register_positions is what differentiates them.
         registers = (
@@ -1876,7 +1872,7 @@ class Perceiver(nn.Module):
             if patch_positions is None:
                 raise ValueError("patch_positions are required for the RoPE Perceiver")
             register_positions = self.build_register_positions(
-                patch_positions, register_grid
+                patch_positions, spatial_grid
             )
         # Read mask: the [B, N] key-visibility mask.
         read_attn_mask: Tensor | None = (
@@ -1901,7 +1897,7 @@ class Perceiver(nn.Module):
             )
         out = self.norm(registers)
         out = rearrange(
-            out, "b (h w) d -> b h w d", h=register_grid[0], w=register_grid[1]
+            out, "b (h w) d -> b h w d", h=spatial_grid[0], w=spatial_grid[1]
         )
         # The student reads a detached copy: its losses train the student alone.
         student_registers = (
