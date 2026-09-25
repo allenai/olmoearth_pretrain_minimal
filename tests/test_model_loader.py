@@ -17,6 +17,7 @@ from olmoearth_pretrain_minimal.model_loader import ENCODER_INPUT_MODALITY_NAMES
 from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.olmoearth_pretrain_v1 import (
     V1_1_SUPPORTED_SIZES,
     V1_2_SUPPORTED_SIZES,
+    V1_3_SUPPORTED_SIZES,
     V1_SUPPORTED_SIZES,
 )
 from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.datatypes import (
@@ -397,12 +398,13 @@ def test_encoder_drops_untrained_modalities() -> None:
             ("v1", V1_SUPPORTED_SIZES),
             ("v1.1", V1_1_SUPPORTED_SIZES),
             ("v1.2", V1_2_SUPPORTED_SIZES),
+            ("v1.3", V1_3_SUPPORTED_SIZES),
         )
         for size in sizes
     ],
 )
 def test_every_supported_size_builds(
-    model_version: Literal["v1", "v1.1", "v1.2"],
+    model_version: Literal["v1", "v1.1", "v1.2", "v1.3"],
     model_size: Literal["nano", "tiny", "small", "base", "large"],
 ) -> None:
     """Every size a version declares support for must actually build.
@@ -412,3 +414,37 @@ def test_every_supported_size_builds(
     """
     model = OlmoEarthPretrain_v1(model_size=model_size, model_version=model_version)
     assert sum(p.numel() for p in model.parameters()) > 0
+
+
+@pytest.mark.parametrize(
+    ("model_id", "model_version", "model_size"),
+    [
+        (ModelID.OLMOEARTH_V1_NANO, "v1", "nano"),
+        (ModelID.OLMOEARTH_V1_TINY, "v1", "tiny"),
+        (ModelID.OLMOEARTH_V1_BASE, "v1", "base"),
+        (ModelID.OLMOEARTH_V1_LARGE, "v1", "large"),
+        (ModelID.OLMOEARTH_V1_1_NANO, "v1.1", "nano"),
+        (ModelID.OLMOEARTH_V1_1_TINY, "v1.1", "tiny"),
+        (ModelID.OLMOEARTH_V1_1_BASE, "v1.1", "base"),
+        (ModelID.OLMOEARTH_V1_2_NANO, "v1.2", "nano"),
+        (ModelID.OLMOEARTH_V1_2_TINY, "v1.2", "tiny"),
+        (ModelID.OLMOEARTH_V1_2_SMALL, "v1.2", "small"),
+        (ModelID.OLMOEARTH_V1_2_BASE, "v1.2", "base"),
+    ],
+)
+def test_direct_initialization_matches_released_architecture(
+    model_id: ModelID,
+    model_version: Literal["v1", "v1.1", "v1.2"],
+    model_size: Literal["nano", "tiny", "small", "base", "large"],
+) -> None:
+    """The directly built model must have the released model's parameter shapes.
+
+    The v1.1 / v1.2 builders once left Sentinel-2 and Landsat on the default band
+    groups while the released models use a single group each, so the released weights
+    could not be loaded into them.
+    """
+    built = OlmoEarthPretrain_v1(model_size=model_size, model_version=model_version)
+    released = load_model_from_id(model_id, load_weights=False)
+    built_shapes = {k: v.shape for k, v in built.model.state_dict().items()}
+    released_shapes = {k: v.shape for k, v in released.state_dict().items()}
+    assert built_shapes == released_shapes
