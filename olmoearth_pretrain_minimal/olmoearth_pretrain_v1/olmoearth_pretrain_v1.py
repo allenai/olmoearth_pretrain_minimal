@@ -161,7 +161,7 @@ class OlmoEarthPretrain_v1(torch.nn.Module):
         Args:
             model_size: Size of the model. Options: "nano", "tiny", "base", "large"
                 ("large" is v1 only).
-            model_version: Which model version to build ("v1.3" is base only).
+            model_version: Which model version to build.
             supported_modality_names: List of modality names to support. If None,
                 uses the default modalities from OlmoEarth v1 training.
             max_patch_size: Maximum patch size for the encoder.
