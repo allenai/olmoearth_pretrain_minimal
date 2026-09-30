@@ -1890,9 +1890,9 @@ class Perceiver(nn.Module):
 
         for i, read_blk in enumerate(self.read_blocks):
             kv = (
-                self.kv_projs[i](self.input_norms[i](patch_tokens))
-                if self.per_depth_read_proj
-                else shared_kv
+                shared_kv
+                if shared_kv is not None
+                else self.kv_projs[i](self.input_norms[i](patch_tokens))
             )
             registers = read(registers, i, read_blk, kv)
             del kv

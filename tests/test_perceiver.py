@@ -1,11 +1,13 @@
 """Tests for the spatial Perceiver register bottleneck."""
 
 import weakref
+from collections.abc import Callable
+from typing import Any
 
 import pytest
 import torch
 from einops import rearrange
-from torch import Tensor
+from torch import Tensor, nn
 
 from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.nn.flexi_vit import Perceiver
 
@@ -49,6 +51,12 @@ def _make_inputs(
     )
     visible_mask = torch.rand(batch_size, num_tokens, generator=generator) > 0.3
     return patch_tokens, patch_positions, visible_mask
+
+
+ForwardFn = Callable[
+    [Tensor, Tensor, Tensor, tuple[int, int]],
+    tuple[Tensor, Tensor | None, Tensor | None],
+]
 
 
 def _reference_forward(
@@ -136,7 +144,7 @@ def test_perceiver_gradients_match_reference(
     perceiver = _build_perceiver(per_depth_read_proj, attn_dim)
     patch_tokens, patch_positions, visible_mask = _make_inputs()
 
-    def grads(forward_fn) -> tuple[Tensor, dict[str, Tensor]]:
+    def grads(forward_fn: ForwardFn) -> tuple[Tensor, dict[str, Tensor]]:
         perceiver.zero_grad(set_to_none=True)
         tokens = patch_tokens.clone().requires_grad_(True)
         out, _, student = forward_fn(
@@ -179,10 +187,12 @@ def test_perceiver_keeps_one_per_read_kv_alive_at_inference(
     # For each read: (K/V tensors built so far, indices still alive, index consumed).
     state_at_read: list[tuple[int, list[int], int | None]] = []
 
-    def record_kv(_module, _inputs, output: Tensor) -> None:
+    def record_kv(_module: nn.Module, _inputs: tuple[Any, ...], output: Tensor) -> None:
         kv_refs.append(weakref.ref(output))
 
-    def record_read(_module, _args, kwargs) -> None:
+    def record_read(
+        _module: nn.Module, _args: tuple[Any, ...], kwargs: dict[str, Any]
+    ) -> None:
         alive = [j for j, ref in enumerate(kv_refs) if ref() is not None]
         consumed = next(
             (j for j, ref in enumerate(kv_refs) if ref() is kwargs["y"]), None
@@ -216,7 +226,7 @@ def test_perceiver_inference_peak_memory_cuda() -> None:
     )
     token_bytes = patch_tokens.numel() * patch_tokens.element_size()
 
-    def peak_bytes(forward_fn) -> int:
+    def peak_bytes(forward_fn: ForwardFn) -> int:
         torch.cuda.synchronize()
         torch.cuda.empty_cache()
         torch.cuda.reset_peak_memory_stats()
