@@ -1850,14 +1850,13 @@ class Perceiver(nn.Module):
             student_registers: ``[B, n_h, n_w, max(student_dims)]`` -- the detached
                 student's readout of ``registers`` -- or None without a student.
         """
-        if self.per_depth_read_proj:
-            kv_per_read = [
-                proj(norm(patch_tokens))
-                for norm, proj in zip(self.input_norms, self.kv_projs)
-            ]
-        else:
-            kv = self.kv_proj(self.input_norm(patch_tokens))
-            kv_per_read = [kv] * len(self.read_blocks)
+        # With per-depth projections, each read's K/V is built inside the loop below
+        # and freed after that read, so only one token-sized copy is alive at a time.
+        shared_kv = (
+            None
+            if self.per_depth_read_proj
+            else self.kv_proj(self.input_norm(patch_tokens))
+        )
         batch_size = patch_tokens.shape[0]
         num_registers = spatial_grid[0] * spatial_grid[1]
         # Clone the single learned latent across the batch and all grid cells; RoPE on
@@ -1889,8 +1888,14 @@ class Perceiver(nn.Module):
             )
             return out
 
-        for i, (read_blk, kv) in enumerate(zip(self.read_blocks, kv_per_read)):
+        for i, read_blk in enumerate(self.read_blocks):
+            kv = (
+                self.kv_projs[i](self.input_norms[i](patch_tokens))
+                if self.per_depth_read_proj
+                else shared_kv
+            )
             registers = read(registers, i, read_blk, kv)
+            del kv
             registers = self.latent_blocks[i](
                 x=registers,
                 rope_positions=register_positions,
