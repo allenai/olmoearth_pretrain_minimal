@@ -139,7 +139,9 @@ def load_model_from_id(model_id: ModelID, load_weights: bool = True) -> torch.nn
 
 
 def load_model_from_path(
-    model_path: PathLike | str, load_weights: bool = True
+    model_path: PathLike | str,
+    load_weights: bool = True,
+    encoder_input_modalities: list[str] | None = None,
 ) -> torch.nn.Module:
     """Initialize and load the weights for the specified model from a path.
 
@@ -147,11 +149,17 @@ def load_model_from_path(
         model_path: the path to the model.
         load_weights: whether to load the weights. Set false to skip downloading the
             weights from Hugging Face and leave them randomly initialized. Note that
+        encoder_input_modalities: the modalities the encoder was trained to ingest.
+            None derives them from the training config, which must then record
+            ``only_decode_modalities`` (converted checkpoints, whose config.json
+            holds only the ``model`` block, do not).
     """
     config_fpath = _resolve_artifact_path(model_path, CONFIG_FILENAME)
     config_dict = _read_config(config_fpath)
     model = _build_model_from_config(config_dict)
-    _restrict_encoder_inputs(model, _encoder_input_modalities_from_config(config_dict))
+    if encoder_input_modalities is None:
+        encoder_input_modalities = _encoder_input_modalities_from_config(config_dict)
+    _restrict_encoder_inputs(model, encoder_input_modalities)
 
     if not load_weights:
         return model
