@@ -7,6 +7,7 @@ from typing import Any, NamedTuple
 
 import torch
 
+from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.constants import Modality
 from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.types import ArrayTensor
 
 
@@ -84,6 +85,18 @@ class MaskedOlmoEarthSample(NamedTuple):
                 if val is not None:
                     return_dict[field] = val
         return return_dict
+
+    def crop(self, rows: slice, cols: slice) -> MaskedOlmoEarthSample:
+        """The ``[rows, cols]`` pixel window of every spatial modality and its mask.
+
+        Timestamps and non-spatial modalities are kept whole.
+        """
+        updates = {}
+        for key, val in self.as_dict(return_none=False).items():
+            modality = self.get_unmasked_modality_name(key)
+            if key != "timestamps" and Modality.get(modality).is_spatial:
+                updates[key] = val[:, rows, cols]
+        return self._replace(**updates)
 
     def unmask(self) -> MaskedOlmoEarthSample:
         """Return an unmasked MaskedOlmoEarthSample.

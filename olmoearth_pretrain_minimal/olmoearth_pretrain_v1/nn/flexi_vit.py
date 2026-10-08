@@ -4,7 +4,7 @@ import logging
 import math
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any, NamedTuple
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 import torch
 from einops import rearrange, reduce, repeat
@@ -42,6 +42,11 @@ from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.datatypes import (
     MaskedOlmoEarthSample,
     MaskValue,
 )
+
+if TYPE_CHECKING:
+    from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.nn.searchlight import (
+        SearchlightSettings,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -1798,30 +1803,36 @@ class Perceiver(nn.Module):
                 student_layers.append(nn.LayerNorm(student_dim))
             self.student = nn.Sequential(*student_layers)
 
+    @staticmethod
     def build_register_positions(
-        self, patch_positions: Tensor, register_grid: tuple[int, int]
+        batch_size: int,
+        register_grid: tuple[int, int],
+        patch_size: int,
+        gsd_ratio: float,
+        device: torch.device,
+        latent_patch_size: int,
     ) -> Tensor:
-        """Place the register grid evenly across the patch extent (GSD-scaled frame).
+        """Register (latent) centre coordinates in the token RoPE frame.
 
-        Args:
-            patch_positions: ``[B, N, 2]`` GSD-scaled ``(row, col)`` patch coordinates.
-            register_grid: ``(n_h, n_w)`` grid to lay down (the patch grid, so the
-                register coords coincide with the patch coords).
+        Token ``i`` sits at ``i * gsd_ratio`` (the token positions of
+        ``FlexiVitBase``). With a latent patch size ``s``, latent ``k`` of an axis
+        covers pixels ``[k * s, (k + 1) * s)`` and has its centre at
+        ``((k + 0.5) * s / patch_size - 0.5) * gsd_ratio``. At ``s = patch_size``
+        these are exactly the token coordinates (one register per token); at
+        ``s = 1`` they are pixel centres.
 
         Returns:
-            ``[B, n_h * n_w, 2]`` register coordinates spanning ``[0, max_patch_coord]``.
+            ``[B, n_h * n_w, 2]`` row-major ``(row, col)`` coordinates.
         """
-        n_h, n_w = register_grid
-        device = patch_positions.device
-        # Patch coords are >= 0 (non-spatial tokens sit at 0), so amax gives the extent.
-        max_pos = patch_positions.amax(dim=1)  # [B, 2]
-        lin_h = torch.linspace(0.0, 1.0, n_h, device=device)
-        lin_w = torch.linspace(0.0, 1.0, n_w, device=device)
-        grid_h, grid_w = torch.meshgrid(lin_h, lin_w, indexing="ij")
-        grid = torch.stack([grid_h, grid_w], dim=-1).reshape(
-            -1, 2
-        )  # [n_reg, 2] in [0, 1]
-        return grid.unsqueeze(0) * max_pos.unsqueeze(1)  # [B, n_reg, 2]
+        lat_h, lat_w = register_grid
+
+        def axis(n: int) -> Tensor:
+            k = torch.arange(n, device=device, dtype=torch.float32)
+            return ((k + 0.5) * latent_patch_size / patch_size - 0.5) * gsd_ratio
+
+        grid_h, grid_w = torch.meshgrid(axis(lat_h), axis(lat_w), indexing="ij")
+        grid = torch.stack([grid_h, grid_w], dim=-1).reshape(-1, 2)
+        return grid.unsqueeze(0).expand(batch_size, -1, -1)
 
     def forward(
         self,
@@ -1829,6 +1840,9 @@ class Perceiver(nn.Module):
         patch_positions: Tensor | None,
         visible_mask: Tensor | None,
         spatial_grid: tuple[int, int],
+        patch_size: int,
+        gsd_ratio: float,
+        latent_patch_size: int | None = None,
     ) -> tuple[Tensor, Tensor | None, Tensor | None]:
         """Read the (visible) patch tokens into the register grid.
 
@@ -1838,16 +1852,28 @@ class Perceiver(nn.Module):
                 using RoPE).
             visible_mask: Bool ``[B, N]``, True where a token is a valid key
                 (``MaskValue.ONLINE_ENCODER``). None means attend to all tokens.
-            spatial_grid: ``(n_h, n_w)`` patch grid the single latent is cloned to.
+            spatial_grid: ``(n_h, n_w)`` patch grid of the tokens.
+            patch_size: Token patch size ``p`` of this forward pass.
+            gsd_ratio: Distance between adjacent token centres in the RoPE frame
+                (the ``gsd_ratio`` of ``FlexiVitBase``'s RoPE positions); the
+                registers are placed in the same frame.
+            latent_patch_size: Pixels per latent along each side, ``s``; must divide
+                ``p``. One latent per ``s x s`` pixels at the pixel-block centres
+                (:meth:`build_register_positions`), so ``s = 1`` gives one latent per
+                pixel. The reads are global, so only the grid and its positions
+                change. None = ``p``, one latent per token.
 
         Returns:
-            registers: ``[B, n_h, n_w, register_dim]`` -- the grid, shaped, so callers
+            The register grid is ``(r_h, r_w) = (n_h * p / s, n_w * p / s)``, which is
+            the patch grid ``(n_h, n_w)`` when ``latent_patch_size`` is None.
+
+            registers: ``[B, r_h, r_w, register_dim]`` -- the grid, shaped, so callers
                 never rebuild it from a flat sequence.
-            register_positions: ``[B, n_h * n_w, 2]`` or None. Deliberately FLAT: its
+            register_positions: ``[B, r_h * r_w, 2]`` or None. Deliberately FLAT: its
                 only consumer is the decoder's cross-attention, which wants a token
                 sequence. Row-major (``indexing="ij"``), so cell ``[i, j]`` of
-                ``registers`` is entry ``i * n_w + j`` of ``register_positions``.
-            student_registers: ``[B, n_h, n_w, max(student_dims)]`` -- the detached
+                ``registers`` is entry ``i * r_w + j`` of ``register_positions``.
+            student_registers: ``[B, r_h, r_w, max(student_dims)]`` -- the detached
                 student's readout of ``registers`` -- or None without a student.
         """
         # With per-depth projections, each read's K/V is built inside the loop below
@@ -1858,7 +1884,18 @@ class Perceiver(nn.Module):
             else self.kv_proj(self.input_norm(patch_tokens))
         )
         batch_size = patch_tokens.shape[0]
-        num_registers = spatial_grid[0] * spatial_grid[1]
+        if latent_patch_size is None:
+            latent_patch_size = patch_size
+        if patch_size % latent_patch_size != 0:
+            raise ValueError(
+                f"latent_patch_size {latent_patch_size} does not divide "
+                f"patch_size {patch_size}"
+            )
+        register_grid = (
+            spatial_grid[0] * patch_size // latent_patch_size,
+            spatial_grid[1] * patch_size // latent_patch_size,
+        )
+        num_registers = register_grid[0] * register_grid[1]
         # Clone the single learned latent across the batch and all grid cells; RoPE on
         # the per-cell register_positions is what differentiates them.
         registers = (
@@ -1871,7 +1908,12 @@ class Perceiver(nn.Module):
             if patch_positions is None:
                 raise ValueError("patch_positions are required for the RoPE Perceiver")
             register_positions = self.build_register_positions(
-                patch_positions, spatial_grid
+                batch_size,
+                register_grid,
+                patch_size,
+                gsd_ratio,
+                patch_tokens.device,
+                latent_patch_size,
             )
         # Read mask: the [B, N] key-visibility mask.
         read_attn_mask: Tensor | None = (
@@ -1902,7 +1944,7 @@ class Perceiver(nn.Module):
             )
         out = self.norm(registers)
         out = rearrange(
-            out, "b (h w) d -> b h w d", h=spatial_grid[0], w=spatial_grid[1]
+            out, "b (h w) d -> b h w d", h=register_grid[0], w=register_grid[1]
         )
         # The student reads a detached copy: its losses train the student alone.
         student_registers = (
@@ -2531,8 +2573,17 @@ class Encoder(FlexiVitBase):
         input_res: int,
         token_exit_cfg: dict[str, int] | None = None,
         fast_pass: bool = False,
+        latent_patch_size: int | None = None,
+        searchlight: "SearchlightSettings | None" = None,
     ) -> tuple[dict[str, Tensor], dict[str, Any] | None, dict[str, Any] | None]:
-        """Apply the attention to the tokens and masks."""
+        """Apply the attention to the tokens and masks.
+
+        ``latent_patch_size`` sets the Perceiver's latent grid (see
+        :meth:`Perceiver.forward`); it requires a Perceiver. ``searchlight`` runs the
+        attention under a sliding neighborhood (``nn/searchlight.py``).
+        """
+        if latent_patch_size is not None and self.perceiver is None:
+            raise ValueError("latent_patch_size requires an encoder with a Perceiver")
         tokens_only_dict, original_masks_dict, modalities_to_dims_dict = (
             self.split_tokens_masks_and_dims(x)
         )
@@ -2572,6 +2623,35 @@ class Encoder(FlexiVitBase):
 
         tokens_dict.update(original_masks_dict)
         tokens, mask = self.collapse_and_combine_hwtc(tokens_dict)
+
+        if searchlight is not None:
+            from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.nn.searchlight import (
+                encoder_searchlight,
+            )
+
+            # Searchlight replaces batching with one large domain per forward: the
+            # sample is a whole area ([1, H, W, T, C], H and W any multiple of the
+            # patch size), and the parallelism comes from its millions of tokens.
+            # Larger areas are run in pieces by searchlight.embed_domain.
+            if tokens.shape[0] != 1:
+                raise ValueError(
+                    "Searchlight runs one domain per forward (batch size 1), "
+                    f"got batch size {tokens.shape[0]}"
+                )
+
+            return encoder_searchlight(
+                self,
+                searchlight,
+                tokens,
+                mask,
+                positions,
+                tokens_only_dict,
+                original_masks_dict,
+                modalities_to_dims_dict,
+                patch_size,
+                input_res,
+                latent_patch_size,
+            )
 
         tokens, indices, new_mask, seq_lengths, max_seqlen, bool_mask = (
             self._maybe_remove_masked_tokens(tokens, mask, fast_pass)
@@ -2674,6 +2754,10 @@ class Encoder(FlexiVitBase):
                 patch_positions=register_kv_positions,
                 visible_mask=bool_mask,
                 spatial_grid=spatial_grid,
+                patch_size=patch_size,
+                gsd_ratio=CompositeEncodings.calculate_gsd_ratio(input_res, patch_size)
+                * self.rope_coordinate_scale,
+                latent_patch_size=latent_patch_size,
             )
             register_output = {
                 "registers": registers,
@@ -2696,6 +2780,8 @@ class Encoder(FlexiVitBase):
         input_res: int = BASE_GSD,
         token_exit_cfg: dict | None = None,
         fast_pass: bool = False,
+        latent_patch_size: int | None = None,
+        searchlight: "SearchlightSettings | None" = None,
     ) -> dict[str, Any]:
         """Process masked input samples into token representations.
 
@@ -2705,6 +2791,14 @@ class Encoder(FlexiVitBase):
             input_res: Resolution of the input data
             token_exit_cfg: Configuration for token exit
             fast_pass: Whether to always pass None as the mask to the transformer, this enables torch based flash attention, and skips mask construciton and sorting
+            latent_patch_size: Pixels per Perceiver latent along each side; must
+                divide ``patch_size``. None = one latent per token. Requires a
+                Perceiver.
+            searchlight: Inference only: every token and latent attends within its
+                own sliding neighborhood over one whole domain (batch size 1),
+                instead of the window it was cropped to. None = the stock forward.
+                See ``nn/searchlight.py``; ``searchlight.embed_domain`` runs large
+                areas in pieces.
 
         Returns:
             TokensAndMasks containing the encoded representations and their masks
@@ -2727,6 +2821,8 @@ class Encoder(FlexiVitBase):
                     input_res=input_res,
                     token_exit_cfg=token_exit_cfg,
                     fast_pass=fast_pass,
+                    latent_patch_size=latent_patch_size,
+                    searchlight=searchlight,
                 )
             )
         else:
