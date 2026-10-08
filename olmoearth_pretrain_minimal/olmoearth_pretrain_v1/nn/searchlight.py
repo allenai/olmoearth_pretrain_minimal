@@ -653,6 +653,22 @@ def embed_domain(
         )
     assert sample.sentinel2_l2a is not None
     H, W = sample.sentinel2_l2a.shape[1:3]
+    # The last crop of an axis is cut short at the domain edge: the leftover past the
+    # last full core plus one halo. Refuse up front if that is below the neighborhood.
+    for name, n in (("height", H), ("width", W)):
+        last = (n - 1) // core_px * core_px
+        extent = min(last + core_px + halo_px, n) - max(last - halo_px, 0)
+        # A domain below the neighborhood is refused by encoder_searchlight itself.
+        if settings.neighborhood_attention_size_px <= n and (
+            extent < settings.neighborhood_attention_size_px
+        ):
+            raise ValueError(
+                f"the last crop along the {name} ({n} px) is {extent} px, below "
+                f"neighborhood_attention_size_px "
+                f"{settings.neighborhood_attention_size_px}; use overlap_px >= "
+                f"{2 * (settings.neighborhood_attention_size_px - patch_size)} "
+                "(safe for any domain size) or a different crop_px"
+            )
     out: Tensor | None = None
     for r in range(0, H, core_px):
         for c in range(0, W, core_px):

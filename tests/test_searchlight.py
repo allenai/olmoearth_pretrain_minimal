@@ -238,6 +238,22 @@ def test_embed_domain_chunks_match_one_pass() -> None:
     torch.testing.assert_close(chunked, one_pass, atol=1e-4, rtol=1e-4)
 
 
+@pytest.mark.parametrize(("size", "overlap_px"), [(50, 0), (50, 8)])
+def test_embed_domain_refuses_a_last_crop_below_the_neighborhood(
+    size: int, overlap_px: int
+) -> None:
+    """A short last crop is refused before any forward, not deep in the encoder."""
+    encoder = _encoder()
+    with pytest.raises(ValueError, match="last crop"):
+        embed_domain(encoder, _sample(size), 2, 1, crop_px=48, overlap_px=overlap_px)
+
+
+def test_embed_domain_accepts_a_short_leftover_with_enough_overlap() -> None:
+    """With overlap_px >= 2 * (neighborhood - patch size) any domain size runs."""
+    out = embed_domain(_encoder(), _sample(50), 2, 1, crop_px=48, overlap_px=28)
+    assert out.shape == (50, 50, 8)
+
+
 def test_per_pixel_missing_data_is_refused() -> None:
     """NATTEN needs the same tokens in every cell."""
     encoder = _encoder()
