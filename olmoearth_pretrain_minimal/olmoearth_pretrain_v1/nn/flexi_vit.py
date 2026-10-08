@@ -1864,14 +1864,16 @@ class Perceiver(nn.Module):
                 change. None = ``p``, one latent per token.
 
         Returns:
-            registers: ``[B, n_h, n_w, register_dim]`` (with ``latent_patch_size``,
-                ``[B, n_h * p / s, n_w * p / s, register_dim]``) -- the grid, shaped, so
-                callers never rebuild it from a flat sequence.
-            register_positions: ``[B, n_h * n_w, 2]`` or None. Deliberately FLAT: its
+            The register grid is ``(r_h, r_w) = (n_h * p / s, n_w * p / s)``, which is
+            the patch grid ``(n_h, n_w)`` when ``latent_patch_size`` is None.
+
+            registers: ``[B, r_h, r_w, register_dim]`` -- the grid, shaped, so callers
+                never rebuild it from a flat sequence.
+            register_positions: ``[B, r_h * r_w, 2]`` or None. Deliberately FLAT: its
                 only consumer is the decoder's cross-attention, which wants a token
                 sequence. Row-major (``indexing="ij"``), so cell ``[i, j]`` of
-                ``registers`` is entry ``i * n_w + j`` of ``register_positions``.
-            student_registers: ``[B, n_h, n_w, max(student_dims)]`` -- the detached
+                ``registers`` is entry ``i * r_w + j`` of ``register_positions``.
+            student_registers: ``[B, r_h, r_w, max(student_dims)]`` -- the detached
                 student's readout of ``registers`` -- or None without a student.
         """
         # With per-depth projections, each read's K/V is built inside the loop below
