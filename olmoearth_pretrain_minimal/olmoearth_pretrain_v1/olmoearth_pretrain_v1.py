@@ -134,7 +134,7 @@ V1_2_PATCH_EMBED_HIDDEN_SIZES = V1_1_PATCH_EMBED_HIDDEN_SIZES | {"small": [64]}
 # v1.3 adds an AttentionPooler on top of v1.2: the decoder cross-attends
 # the location-token grid (with 2D RoPE) and the target is the frozen patch projection.
 V1_3_SUPPORTED_SIZES = ("base",)
-V1_3_ATTENTION_POOLER_DEPTH = 4
+V1_3_ATTENTION_POOLER_DEPTH = 1
 V1_3_ATTENTION_POOLER_STUDENT_DIMS = [128, 64]
 V1_3_DECODER_POS_ENCODING = "rope"
 
