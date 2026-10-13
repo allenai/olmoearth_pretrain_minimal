@@ -44,8 +44,6 @@ if TYPE_CHECKING:
 # pixel and timestep. Matches the band dropout rate of v1.1 and v1.2.
 MAX_INTERPOLATED_FRACTION = 0.2
 
-# Center wavelengths in nm, split into groups that can be interpolated between.
-# Thermal bands are kept apart from the reflective ones.
 SPECTRAL_GROUPS: dict[str, list[dict[str, float]]] = {
     Modality.SENTINEL2_L2A.name: [
         {

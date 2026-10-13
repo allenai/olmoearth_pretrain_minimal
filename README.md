@@ -169,7 +169,6 @@ model.eval()
 timestamps = torch.zeros(1, 12, 3, dtype=torch.long)
 timestamps[:, :, 1] = torch.arange(12, dtype=torch.long)  # months 0-11
 
-# Masks are optional; without one, all data is visible to the encoder.
 sample = MaskedOlmoEarthSample(
     timestamps=timestamps,
     sentinel2_l2a=torch.from_numpy(normalized_sentinel2).float(),
@@ -240,10 +239,6 @@ from olmoearth_pretrain_minimal import fill_missing_bands
 
 sample = fill_missing_bands(sample, {"sentinel2_l2a": ["B01", "B09"]}, model)
 ```
-
-Masks can have one entry per band set (`(..., num_band_sets)`), one per band
-(`(..., bands)`, where `MaskValue.MISSING` marks a band missing), or no band
-dimension.
 
 ### Note
 
