@@ -1,6 +1,7 @@
 """Tests for ``data/missing_bands.py`` and the encoder's handling of missing bands."""
 
 import warnings
+from typing import Any
 
 import numpy as np
 import pytest
@@ -37,7 +38,7 @@ VISIBLE = MaskValue.ONLINE_ENCODER.value
 
 def _encoder(v1: bool) -> Encoder:
     """v1-style encoder (no band dropout) or v1.1+-style (one S2/Landsat band set)."""
-    kwargs = {}
+    kwargs: dict[str, Any] = {}
     if not v1:
         kwargs = {
             "tokenization_config": TokenizationConfig(
@@ -98,6 +99,16 @@ def _band(
     return getattr(sample, modality.name)[..., modality.band_order.index(band)]
 
 
+def _data(sample: MaskedOlmoEarthSample) -> torch.Tensor:
+    assert sample.sentinel2_l2a is not None
+    return sample.sentinel2_l2a
+
+
+def _mask(sample: MaskedOlmoEarthSample) -> torch.Tensor:
+    assert sample.sentinel2_l2a_mask is not None
+    return sample.sentinel2_l2a_mask
+
+
 # v1.1 and later: missing bands are zeroed, fully missing band sets are masked.
 
 
@@ -108,8 +119,8 @@ def test_v1_2_zero_fills_partial_band_set() -> None:
         out = handle_missing_bands(sample, _encoder(v1=False))
     assert (_band(out, S2, "B01") == 0).all() and (_band(out, S2, "B09") == 0).all()
     assert torch.equal(_band(out, S2, "B02"), _band(sample, S2, "B02"))
-    assert out.sentinel2_l2a_mask.shape == (B, H, W, T, 1)
-    assert (out.sentinel2_l2a_mask == VISIBLE).all()
+    assert _mask(out).shape == (B, H, W, T, 1)
+    assert (_mask(out) == VISIBLE).all()
 
 
 def test_v1_2_warns_beyond_band_dropout_rate() -> None:
@@ -142,7 +153,7 @@ def test_v1_interpolates_over_time() -> None:
     b01 = _band(sample, S2, "B01")
     expected = (b01[..., 0] + b01[..., 2]) / 2
     assert torch.allclose(_band(out, S2, "B01")[..., 1], expected)
-    assert (out.sentinel2_l2a_mask == VISIBLE).all()
+    assert (_mask(out) == VISIBLE).all()
 
 
 def test_v1_copies_nearest_timestep_at_the_edge() -> None:
@@ -166,7 +177,7 @@ def test_v1_interpolates_over_wavelength_when_always_missing() -> None:
     w = (wl["B09"] - wl["B8A"]) / (wl["B11"] - wl["B8A"])
     b8a, b11 = _band(sample, S2, "B8A"), _band(sample, S2, "B11")
     assert torch.allclose(_band(out, S2, "B09"), b8a + w * (b11 - b8a))
-    assert (out.sentinel2_l2a_mask == VISIBLE).all()
+    assert (_mask(out) == VISIBLE).all()
 
 
 @pytest.mark.parametrize("v1", [True, False], ids=["v1", "v1.2"])
@@ -175,7 +186,7 @@ def test_rgb_nir_only_warns(v1: bool) -> None:
     sample = _with_nan(_sample(), S2, [b for b in S2.band_order if b not in rgbn])
     with pytest.warns(UserWarning, match="Up to 8 of the 12"):
         out = handle_missing_bands(sample, _encoder(v1))
-    assert torch.isfinite(out.sentinel2_l2a).all()
+    assert torch.isfinite(_data(out)).all()
 
 
 def test_v1_temporal_interpolation_counts_toward_warning() -> None:
@@ -208,9 +219,9 @@ def test_missing_timestep_is_masked(v1: bool) -> None:
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         out = handle_missing_bands(sample, _encoder(v1))
-    assert (out.sentinel2_l2a[..., 1, :] == 0).all()
-    assert (out.sentinel2_l2a_mask[..., 1, :] == MISSING).all()
-    assert (out.sentinel2_l2a_mask[..., [0, 2], :] == VISIBLE).all()
+    assert (_data(out)[..., 1, :] == 0).all()
+    assert (_mask(out)[..., 1, :] == MISSING).all()
+    assert (_mask(out)[..., [0, 2], :] == VISIBLE).all()
 
 
 @pytest.mark.parametrize("v1", [True, False], ids=["v1", "v1.2"])
@@ -219,8 +230,8 @@ def test_per_band_mask_marks_bands_missing(v1: bool) -> None:
     mask[..., S2.band_order.index("B01")] = MISSING
     sample = _sample(mask=mask)
     out = handle_missing_bands(sample, _encoder(v1))
-    assert out.sentinel2_l2a_mask.shape == (B, H, W, T, 3 if v1 else 1)
-    assert (out.sentinel2_l2a_mask == VISIBLE).all()
+    assert _mask(out).shape == (B, H, W, T, 3 if v1 else 1)
+    assert (_mask(out) == VISIBLE).all()
     expected = _band(sample, S2, "B02") if v1 else torch.zeros(B, H, W, T)
     assert torch.equal(_band(out, S2, "B01"), expected)
 
@@ -232,7 +243,7 @@ def test_per_band_mask_marks_bands_missing(v1: bool) -> None:
 )
 def test_mask_is_made_per_band_set(mask: torch.Tensor | None) -> None:
     out = handle_missing_bands(_sample(mask=mask), _encoder(v1=True))
-    assert out.sentinel2_l2a_mask.shape == (B, H, W, T, 3)
+    assert _mask(out).shape == (B, H, W, T, 3)
 
 
 def test_unchanged_when_nothing_is_missing() -> None:
@@ -248,16 +259,16 @@ def test_bad_mask_shape() -> None:
 
 def test_wrong_number_of_bands() -> None:
     sample = _sample()
-    sample = sample._replace(sentinel2_l2a=sample.sentinel2_l2a[..., :10])
+    sample = sample._replace(sentinel2_l2a=_data(sample)[..., :10])
     with pytest.raises(ValueError, match="has 10 bands"):
         handle_missing_bands(sample, _encoder(v1=True))
 
 
 def test_input_not_modified() -> None:
     sample = _with_nan(_sample(), S2, ["B01"])
-    nan = sample.sentinel2_l2a.isnan().clone()
+    nan = _data(sample).isnan().clone()
     handle_missing_bands(sample, _encoder(v1=True))
-    assert torch.equal(sample.sentinel2_l2a.isnan(), nan)
+    assert torch.equal(_data(sample).isnan(), nan)
 
 
 # fill_missing_bands
@@ -269,8 +280,8 @@ def test_fill_missing_bands_matches_nan(v1: bool) -> None:
     sample = _sample()
     by_name = fill_missing_bands(sample, {S2.name: ["B01", "B09"]}, encoder)
     by_nan = handle_missing_bands(_with_nan(sample, S2, ["B01", "B09"]), encoder)
-    assert torch.equal(by_name.sentinel2_l2a, by_nan.sentinel2_l2a)
-    assert torch.equal(by_name.sentinel2_l2a_mask, by_nan.sentinel2_l2a_mask)
+    assert torch.equal(_data(by_name), _data(by_nan))
+    assert torch.equal(_mask(by_name), _mask(by_nan))
 
 
 def test_fill_missing_bands_accepts_model_with_encoder() -> None:
@@ -316,7 +327,7 @@ def test_forward_with_nan_is_finite(v1: bool) -> None:
 @pytest.mark.parametrize("fast_pass", [False, True], ids=["slow", "fast"])
 def test_output_does_not_depend_on_rest_of_batch(v1: bool, fast_pass: bool) -> None:
     encoder = _encoder(v1)
-    data = _sample(batch=2).sentinel2_l2a
+    data = _data(_sample(batch=2))
     data[0, ..., 1, :] = float("nan")  # only the first sample is missing a timestep
     batch = MaskedOlmoEarthSample(timestamps=_timestamps(2), sentinel2_l2a=data)
     alone = MaskedOlmoEarthSample(timestamps=_timestamps(1), sentinel2_l2a=data[:1])
