@@ -10,8 +10,8 @@ from typing import Any, Literal
 import torch
 
 from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.nn.flexi_vit import (
+    AttentionPoolerConfig,
     EncoderConfig,
-    PerceiverConfig,
     PredictorConfig,
 )
 from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.nn.latent_mim import (
@@ -131,11 +131,11 @@ V1_2_SUPPORTED_SIZES = ("nano", "small", "tiny", "base")
 # v1.2 adds the small size, which v1.1 does not have.
 V1_2_PATCH_EMBED_HIDDEN_SIZES = V1_1_PATCH_EMBED_HIDDEN_SIZES | {"small": [64]}
 
-# v1.3 adds a Perceiver register bottleneck on top of v1.2: the decoder cross-attends
-# the register grid (with 2D RoPE) and the target is the frozen patch projection.
+# v1.3 adds an AttentionPooler on top of v1.2: the decoder cross-attends
+# the location-token grid (with 2D RoPE) and the target is the frozen patch projection.
 V1_3_SUPPORTED_SIZES = ("base",)
-V1_3_PERCEIVER_LATENT_DEPTH = 4
-V1_3_PERCEIVER_STUDENT_DIMS = [128, 64]
+V1_3_ATTENTION_POOLER_DEPTH = 4
+V1_3_ATTENTION_POOLER_STUDENT_DIMS = [128, 64]
 V1_3_DECODER_POS_ENCODING = "rope"
 
 
@@ -249,21 +249,21 @@ class OlmoEarthPretrain_v1(torch.nn.Module):
                     }
                 )
             if model_version == "v1.3":
-                # The register grid and its attention run at the encoder width.
-                register_dim = int(model_config["encoder_embedding_size"])
-                encoder_extra_kwargs["perceiver_config"] = PerceiverConfig(
-                    register_dim=register_dim,
-                    latent_depth=V1_3_PERCEIVER_LATENT_DEPTH,
+                # The location-token grid and its attention run at the encoder width.
+                pooler_dim = int(model_config["encoder_embedding_size"])
+                encoder_extra_kwargs["attention_pooler_config"] = AttentionPoolerConfig(
+                    pooler_dim=pooler_dim,
+                    pooler_depth=V1_3_ATTENTION_POOLER_DEPTH,
                     per_depth_read_proj=True,
-                    attn_dim=register_dim,
-                    student_dims=V1_3_PERCEIVER_STUDENT_DIMS,
+                    attn_dim=pooler_dim,
+                    student_dims=V1_3_ATTENTION_POOLER_STUDENT_DIMS,
                     student_output_norm=True,
                 )
                 decoder_extra_kwargs.update(
                     {
                         "position_encoding": V1_3_DECODER_POS_ENCODING,
-                        "use_perceiver": True,
-                        "register_dim": register_dim,
+                        "use_attention_pooler": True,
+                        "pooler_dim": pooler_dim,
                     }
                 )
 

@@ -1341,7 +1341,7 @@ class FlexiVitBase(nn.Module):
     def _patch_grid_hw(self, tokens_only_dict: dict[str, Tensor]) -> tuple[int, int]:
         """Spatial patch grid ``(h, w)`` of the (finest) spatial modality.
 
-        Used by the dynamic Perceiver to size + place its grid to match the
+        Used by the dynamic AttentionPooler to size + place its grid to match the
         patches. All spatial modalities share the GSD-scaled coordinate frame, so the
         max over them gives the finest grid (and the largest coordinate extent).
         """
@@ -1356,7 +1356,9 @@ class FlexiVitBase(nn.Module):
             h, w = tokens_only_dict[modality_name].shape[1:3]
             h_max, w_max = max(h_max, h), max(w_max, w)
         if h_max == 0 or w_max == 0:
-            raise ValueError("dynamic Perceiver requires at least one spatial modality")
+            raise ValueError(
+                "dynamic AttentionPooler requires at least one spatial modality"
+            )
         return (h_max, w_max)
 
     @staticmethod
@@ -1629,21 +1631,26 @@ class FlexiVitBase(nn.Module):
             block.apply_compile()
 
 
-class Perceiver(nn.Module):
-    """A Perceiver-style spatial Perceiver.
+class AttentionPooler(nn.Module):
+    """Dense spatial attention pooling of the encoder tokens onto a location grid.
 
-    A grid of learned latent tokens cross-attention *reads* the encoded (visible) patch
-    tokens, then a small *latent transformer* self-attends over the grid. The grid is
-    the model's compressed, spatially-anchored representation: the decoder reads only
-    this grid, and frozen evals probe it. Register coordinates are placed in the same
-    GSD-scaled frame as the patches, so 2D RoPE relative offsets are meaningful.
+    Naming: a single **learned query** (``learned_query``) is repeated into one
+    **location query** per grid cell; after the read + self-attention layers and the
+    final norm, the location queries are the **location tokens** (``location_tokens``,
+    plus the detached ``student_location_tokens``).
+
+    The location queries cross-attention *read* the encoded (visible) patch tokens, then
+    self-attend over the grid. The resulting location tokens are the model's compressed,
+    spatially-anchored representation: the decoder reads only them, and frozen evals
+    probe them. Query coordinates are placed in the same GSD-scaled frame as the
+    patches, so 2D RoPE relative offsets are meaningful.
 
     Reads and self-attention are interleaved, ``[read -> self-attend]`` per layer, so
-    the latents re-query the input after each refinement (the Perceiver/DETR/Flamingo
+    the queries re-read the input after each refinement (the Perceiver/DETR/Flamingo
     pattern).
 
-    A *single* learned latent is cloned across a grid that matches the input patch grid
-    at forward time. RS imagery is translation-invariant, so every spatial query starts
+    The *single* learned query is repeated across a grid that matches the input patch
+    grid at forward time. RS imagery is translation-invariant, so every spatial query starts
     from the same content; spatial identity comes entirely from 2D RoPE on the per-cell
     positions. This enforces a translation-invariant prior and removes the grid size as
     a baked hyperparameter (it follows the input).
@@ -1652,10 +1659,10 @@ class Perceiver(nn.Module):
     def __init__(
         self,
         encoder_embedding_size: int,
-        register_dim: int,
+        pooler_dim: int,
         num_heads: int,
         mlp_ratio: float,
-        latent_transformer_depth: int,
+        pooler_depth: int,
         use_2d_rope: bool,
         rope_base: float = 10000.0,
         qk_norm: bool = False,
@@ -1664,16 +1671,16 @@ class Perceiver(nn.Module):
         student_dims: list[int] | None = None,
         student_output_norm: bool = False,
     ) -> None:
-        """Initialize the spatial Perceiver.
+        """Initialize the AttentionPooler.
 
         Args:
             encoder_embedding_size: Dimension of the encoded patch tokens (the read's K/V source).
-            register_dim: Dimension of the register grid (the bottleneck width, typically < encoder dim).
-            num_heads: Number of attention heads for the read + latent transformer blocks.
+            pooler_dim: Dimension of the location-token grid (the bottleneck width, typically < encoder dim).
+            num_heads: Number of attention heads for the reads + self-attention blocks.
             mlp_ratio: MLP ratio for the blocks.
-            latent_transformer_depth: Number of ``[read -> self-attend]`` layers: one
+            pooler_depth: Number of ``[read -> self-attend]`` layers: one
                 cross-attention read paired with each self-attention block over the
-                register grid.
+                location-token grid.
             use_2d_rope: Whether to apply 2D RoPE (requires per-token positions at call time).
             rope_base: RoPE frequency base.
             qk_norm: Whether to apply QK normalization in attention.
@@ -1686,40 +1693,41 @@ class Perceiver(nn.Module):
                 different views through their own lens. Requires more than one read block
                 (ignored otherwise). False (default) keeps the shared norm + projection
                 (backwards compatible).
-            attn_dim: If set, DECOUPLE the attention width from ``register_dim``: the
-                read and latent blocks run their attention internally at ``attn_dim``
-                (typically the encoder width, giving encoder-shaped heads, e.g. 12x64)
-                while the register residual stream, MLPs, and outputs stay at
-                ``register_dim``. The read K/V source is consumed at the FULL encoder
+            attn_dim: If set, DECOUPLE the attention width from ``pooler_dim``: the
+                read and self-attention blocks run their attention internally at
+                ``attn_dim`` (typically the encoder width, giving encoder-shaped heads,
+                e.g. 12x64)
+                while the location-token residual stream, MLPs, and outputs stay at
+                ``pooler_dim``. The read K/V source is consumed at the FULL encoder
                 width -- the ``kv_proj`` down-projections are dropped (the per-depth /
                 shared ``input_norm`` LayerNorms remain, at encoder width) and the read
                 blocks' internal K/V projections map ``encoder_embedding_size ->
                 attn_dim`` directly, so read *selection* sees uncompressed token
-                content. Rationale: ``register_dim`` alone cannot fund both routing
+                content. Rationale: ``pooler_dim`` alone cannot fund both routing
                 diversity (head count) and RoPE anchoring (head dim) at narrow widths
                 -- observed as 2x slowdowns at <8 heads and degrading spatial evals at
                 head_dim <64. ``None`` (default) keeps the classic tied-width blocks.
             student_dims: If set, add a DETACHED low-dim "student" readout of the
-                register grid, returned alongside the grid at width ``max(student_dims)``.
+                location-token grid, returned alongside the grid at width ``max(student_dims)``.
                 Smaller entries are Matryoshka prefixes of that output. The student's
-                input is detached, so losses on it never reach the reads, the latent
-                blocks or the encoder.
+                input is detached, so losses on it never reach the reads, the
+                self-attention blocks or the encoder.
             student_output_norm: Put a ``LayerNorm`` on the student's output (at the
                 full student width; a prefix is then a slice of a normalized vector).
         """
         super().__init__()
-        self.register_dim = register_dim
+        self.pooler_dim = pooler_dim
         self.use_2d_rope = use_2d_rope
         self.attn_dim = attn_dim
         if not use_2d_rope:
-            # With a single cloned latent the cells are identical at init and stay
+            # With a single repeated query the cells are identical at init and stay
             # symmetric without a per-cell positional signal; RoPE is what breaks it.
             raise ValueError(
-                "Perceiver requires use_2d_rope=True to differentiate grid cells."
+                "AttentionPooler requires use_2d_rope=True to differentiate grid cells."
             )
-        self.register = nn.Parameter(torch.empty(1, register_dim))
-        nn.init.trunc_normal_(self.register, std=0.02)
-        num_read_blocks = latent_transformer_depth
+        self.learned_query = nn.Parameter(torch.empty(1, pooler_dim))
+        nn.init.trunc_normal_(self.learned_query, std=0.02)
+        num_read_blocks = pooler_depth
         self.per_depth_read_proj = per_depth_read_proj and num_read_blocks > 1
         if self.per_depth_read_proj:
             # One norm + projection per read block.
@@ -1731,7 +1739,7 @@ class Perceiver(nn.Module):
                     (
                         nn.Identity()
                         if attn_dim is not None
-                        else nn.Linear(encoder_embedding_size, register_dim)
+                        else nn.Linear(encoder_embedding_size, pooler_dim)
                     )
                     for _ in range(num_read_blocks)
                 ]
@@ -1741,9 +1749,9 @@ class Perceiver(nn.Module):
             self.kv_proj: nn.Module = (
                 nn.Identity()
                 if attn_dim is not None
-                else nn.Linear(encoder_embedding_size, register_dim)
+                else nn.Linear(encoder_embedding_size, pooler_dim)
             )
-        # The register grid is a purely spatial map, so the reads and the latent
+        # The location-token grid is a purely spatial map, so the reads and the
         # self-attention both rotate over (row, col) only.
         read_position_encoding = (
             PositionEncoding.AXIAL_2D_ROPE if use_2d_rope else PositionEncoding.ABSOLUTE
@@ -1751,7 +1759,7 @@ class Perceiver(nn.Module):
         self.read_blocks = nn.ModuleList(
             [
                 Block(
-                    register_dim,
+                    pooler_dim,
                     num_heads,
                     mlp_ratio,
                     qkv_bias=True,
@@ -1768,10 +1776,10 @@ class Perceiver(nn.Module):
                 for i in range(num_read_blocks)
             ]
         )
-        self.latent_blocks = nn.ModuleList(
+        self.self_attn_blocks = nn.ModuleList(
             [
                 Block(
-                    register_dim,
+                    pooler_dim,
                     num_heads,
                     mlp_ratio,
                     qkv_bias=True,
@@ -1786,11 +1794,11 @@ class Perceiver(nn.Module):
                     rope_base=rope_base,
                     attn_dim=attn_dim,
                 )
-                for _ in range(latent_transformer_depth)
+                for _ in range(pooler_depth)
             ]
         )
-        self.norm = nn.LayerNorm(register_dim)
-        # Detached low-dim student readout of the register grid. Dims are stored
+        self.norm = nn.LayerNorm(pooler_dim)
+        # Detached low-dim student readout of the location-token grid. Dims are stored
         # descending: the student runs at dims[0] and the smaller entries are
         # Matryoshka prefixes of its output.
         self.student_dims: list[int] | None = None
@@ -1798,37 +1806,39 @@ class Perceiver(nn.Module):
         if student_dims:
             self.student_dims = sorted(set(student_dims), reverse=True)
             student_dim = self.student_dims[0]
-            student_layers: list[nn.Module] = [nn.Linear(register_dim, student_dim)]
+            student_layers: list[nn.Module] = [nn.Linear(pooler_dim, student_dim)]
             if student_output_norm:
                 student_layers.append(nn.LayerNorm(student_dim))
             self.student = nn.Sequential(*student_layers)
 
     @staticmethod
-    def build_register_positions(
+    def build_location_query_positions(
         batch_size: int,
-        register_grid: tuple[int, int],
+        query_grid: tuple[int, int],
         patch_size: int,
         gsd_ratio: float,
         device: torch.device,
-        latent_patch_size: int,
+        location_query_patch_size: int,
     ) -> Tensor:
         """Register (latent) centre coordinates in the token RoPE frame.
 
         Token ``i`` sits at ``i * gsd_ratio`` (the token positions of
-        ``FlexiVitBase``). With a latent patch size ``s``, latent ``k`` of an axis
+        ``FlexiVitBase``). With a location-query patch size ``s``, query ``k`` of an axis
         covers pixels ``[k * s, (k + 1) * s)`` and has its centre at
         ``((k + 0.5) * s / patch_size - 0.5) * gsd_ratio``. At ``s = patch_size``
-        these are exactly the token coordinates (one register per token); at
+        these are exactly the token coordinates (one query per token); at
         ``s = 1`` they are pixel centres.
 
         Returns:
             ``[B, n_h * n_w, 2]`` row-major ``(row, col)`` coordinates.
         """
-        lat_h, lat_w = register_grid
+        lat_h, lat_w = query_grid
 
         def axis(n: int) -> Tensor:
             k = torch.arange(n, device=device, dtype=torch.float32)
-            return ((k + 0.5) * latent_patch_size / patch_size - 0.5) * gsd_ratio
+            return (
+                (k + 0.5) * location_query_patch_size / patch_size - 0.5
+            ) * gsd_ratio
 
         grid_h, grid_w = torch.meshgrid(axis(lat_h), axis(lat_w), indexing="ij")
         grid = torch.stack([grid_h, grid_w], dim=-1).reshape(-1, 2)
@@ -1842,9 +1852,9 @@ class Perceiver(nn.Module):
         spatial_grid: tuple[int, int],
         patch_size: int,
         gsd_ratio: float,
-        latent_patch_size: int | None = None,
+        location_query_patch_size: int | None = None,
     ) -> tuple[Tensor, Tensor | None, Tensor | None]:
-        """Read the (visible) patch tokens into the register grid.
+        """Read the (visible) patch tokens into the location-token grid.
 
         Args:
             patch_tokens: Encoded tokens ``[B, N, encoder_embedding_size]``.
@@ -1856,25 +1866,25 @@ class Perceiver(nn.Module):
             patch_size: Token patch size ``p`` of this forward pass.
             gsd_ratio: Distance between adjacent token centres in the RoPE frame
                 (the ``gsd_ratio`` of ``FlexiVitBase``'s RoPE positions); the
-                registers are placed in the same frame.
-            latent_patch_size: Pixels per latent along each side, ``s``; must divide
-                ``p``. One latent per ``s x s`` pixels at the pixel-block centres
-                (:meth:`build_register_positions`), so ``s = 1`` gives one latent per
+                location queries are placed in the same frame.
+            location_query_patch_size: pixels per location query along each side, ``s``; must divide
+                ``p``. One query per ``s x s`` pixels at the pixel-block centres
+                (:meth:`build_location_query_positions`), so ``s = 1`` gives one query per
                 pixel. The reads are global, so only the grid and its positions
-                change. None = ``p``, one latent per token.
+                change. None = ``p``, one location query per token.
 
         Returns:
-            The register grid is ``(r_h, r_w) = (n_h * p / s, n_w * p / s)``, which is
-            the patch grid ``(n_h, n_w)`` when ``latent_patch_size`` is None.
+            The location-token grid is ``(r_h, r_w) = (n_h * p / s, n_w * p / s)``, which is
+            the patch grid ``(n_h, n_w)`` when ``location_query_patch_size`` is None.
 
-            registers: ``[B, r_h, r_w, register_dim]`` -- the grid, shaped, so callers
+            location_tokens: ``[B, r_h, r_w, pooler_dim]`` -- the grid, shaped, so callers
                 never rebuild it from a flat sequence.
-            register_positions: ``[B, r_h * r_w, 2]`` or None. Deliberately FLAT: its
+            location_query_positions: ``[B, r_h * r_w, 2]`` or None. Deliberately FLAT: its
                 only consumer is the decoder's cross-attention, which wants a token
                 sequence. Row-major (``indexing="ij"``), so cell ``[i, j]`` of
-                ``registers`` is entry ``i * r_w + j`` of ``register_positions``.
-            student_registers: ``[B, r_h, r_w, max(student_dims)]`` -- the detached
-                student's readout of ``registers`` -- or None without a student.
+                ``location_tokens`` is entry ``i * r_w + j`` of ``location_query_positions``.
+            student_location_tokens: ``[B, r_h, r_w, max(student_dims)]`` -- the detached
+                student's readout of ``location_tokens`` -- or None without a student.
         """
         # With per-depth projections, each read's K/V is built inside the loop below
         # and freed after that read, so only one token-sized copy is alive at a time.
@@ -1884,48 +1894,51 @@ class Perceiver(nn.Module):
             else self.kv_proj(self.input_norm(patch_tokens))
         )
         batch_size = patch_tokens.shape[0]
-        if latent_patch_size is None:
-            latent_patch_size = patch_size
-        if patch_size % latent_patch_size != 0:
+        if location_query_patch_size is None:
+            location_query_patch_size = patch_size
+        if patch_size % location_query_patch_size != 0:
             raise ValueError(
-                f"latent_patch_size {latent_patch_size} does not divide "
+                f"location_query_patch_size {location_query_patch_size} does not divide "
                 f"patch_size {patch_size}"
             )
-        register_grid = (
-            spatial_grid[0] * patch_size // latent_patch_size,
-            spatial_grid[1] * patch_size // latent_patch_size,
+        query_grid = (
+            spatial_grid[0] * patch_size // location_query_patch_size,
+            spatial_grid[1] * patch_size // location_query_patch_size,
         )
-        num_registers = register_grid[0] * register_grid[1]
-        # Clone the single learned latent across the batch and all grid cells; RoPE on
-        # the per-cell register_positions is what differentiates them.
-        registers = (
-            self.register.unsqueeze(0)
-            .expand(batch_size, num_registers, -1)
+        num_queries = query_grid[0] * query_grid[1]
+        # Repeat the learned query into one location query per grid cell (and batch
+        # element); RoPE on the per-cell location_query_positions is what tells them
+        # apart.
+        location_queries = (
+            self.learned_query.unsqueeze(0)
+            .expand(batch_size, num_queries, -1)
             .contiguous()
         )
-        register_positions = None
+        location_query_positions = None
         if self.use_2d_rope:
             if patch_positions is None:
-                raise ValueError("patch_positions are required for the RoPE Perceiver")
-            register_positions = self.build_register_positions(
+                raise ValueError(
+                    "patch_positions are required for the RoPE AttentionPooler"
+                )
+            location_query_positions = self.build_location_query_positions(
                 batch_size,
-                register_grid,
+                query_grid,
                 patch_size,
                 gsd_ratio,
                 patch_tokens.device,
-                latent_patch_size,
+                location_query_patch_size,
             )
         # Read mask: the [B, N] key-visibility mask.
         read_attn_mask: Tensor | None = (
             visible_mask.bool() if visible_mask is not None else None
         )
 
-        def read(registers: Tensor, i: int, blk: nn.Module, kv: Tensor) -> Tensor:
+        def read(queries: Tensor, i: int, blk: nn.Module, kv: Tensor) -> Tensor:
             out = blk(
-                x=registers,
+                x=queries,
                 y=kv,
                 attn_mask=read_attn_mask,
-                rope_positions=register_positions,
+                rope_positions=location_query_positions,
                 rope_positions_y=patch_positions,
             )
             return out
@@ -1936,50 +1949,54 @@ class Perceiver(nn.Module):
                 if shared_kv is not None
                 else self.kv_projs[i](self.input_norms[i](patch_tokens))
             )
-            registers = read(registers, i, read_blk, kv)
+            location_queries = read(location_queries, i, read_blk, kv)
             del kv
-            registers = self.latent_blocks[i](
-                x=registers,
-                rope_positions=register_positions,
+            location_queries = self.self_attn_blocks[i](
+                x=location_queries,
+                rope_positions=location_query_positions,
             )
-        out = self.norm(registers)
-        out = rearrange(
-            out, "b (h w) d -> b h w d", h=register_grid[0], w=register_grid[1]
+        # After every read + self-attention layer and the final norm, the location
+        # queries are the location tokens.
+        location_tokens = rearrange(
+            self.norm(location_queries),
+            "b (h w) d -> b h w d",
+            h=query_grid[0],
+            w=query_grid[1],
         )
         # The student reads a detached copy: its losses train the student alone.
-        student_registers = (
-            self.student(out.detach()) if self.student is not None else None
+        student_location_tokens = (
+            self.student(location_tokens.detach()) if self.student is not None else None
         )
-        return out, register_positions, student_registers
+        return location_tokens, location_query_positions, student_location_tokens
 
 
 @dataclass
-class PerceiverConfig(Config):
-    """Perceiver-style spatial Perceiver on the encoder.
+class AttentionPoolerConfig(Config):
+    """Dense spatial attention pooler on the encoder.
 
-    Attaching this to :class:`EncoderConfig` turns the bottleneck on: one shared latent
-    is cloned across a grid matching the input patch grid and reads the encoded patch
-    tokens (see :class:`Perceiver`); the decoder cross-attends the
-    resulting register grid and frozen evals probe it. Requires a RoPE position
+    Attaching this to :class:`EncoderConfig` turns the bottleneck on: the learned
+    query is repeated into location queries over a grid matching the input patch grid,
+    which read the encoded patch tokens (see :class:`AttentionPooler`); the decoder cross-attends the
+    resulting location-token grid and frozen evals probe it. Requires a RoPE position
     encoding on the encoder, since the grid cells are told apart by 2D RoPE alone.
 
     Args:
-        register_dim: Width of the register grid (the bottleneck dim). The decoder
+        pooler_dim: Width of the location-token grid (the bottleneck dim). The decoder
             cross-attends this same width, so it is stated rather than defaulted.
-        latent_depth: Number of ``[read -> self-attend]`` layers: one cross-attention
-            read paired with each latent self-attention block over the register grid.
+        pooler_depth: Number of ``[read -> self-attend]`` layers: one cross-attention
+            read paired with each query self-attention block over the location-token grid.
         num_heads: Attention heads in the bottleneck blocks. None uses the encoder's
             ``num_heads``.
         per_depth_read_proj: If True, give each read block its own input LayerNorm
             and K/V down-projection instead of one shared pair, so each read gets its
             own lens on the final layer. Requires more than one read block.
-        attn_dim: If set, the read + latent attention runs internally at this width
+        attn_dim: If set, the read + self-attention runs internally at this width
             (e.g. the encoder ``embedding_size`` for encoder-shaped heads) while the
-            register stream stays at ``register_dim``; the read K/V source is then
+            location-token stream stays at ``pooler_dim``; the read K/V source is then
             consumed at full encoder width with no down-projection. None ties the
-            attention width to ``register_dim``.
+            attention width to ``pooler_dim``.
         student_dims: If set, add a DETACHED low-dim "student" readout of the
-            register grid, exported alongside the registers as ``student_registers``
+            location-token grid, exported alongside the location_tokens as ``student_location_tokens``
             at width ``max(student_dims)``. The student's input is detached, so its
             gradients (the train module's distillation and supervision losses) never
             reach the encoder or the primary bottleneck: the encoder trains exactly as
@@ -1995,11 +2012,11 @@ class PerceiverConfig(Config):
             rather than a normalized slice; a truncating deployment reads exactly that
             slice.
             The heads that distil the teacher into the student are configured
-            separately (``LatentMIMConfig.register_distillation_head_config``).
+            separately (``LatentMIMConfig.location_token_distillation_head_config``).
     """
 
-    register_dim: int
-    latent_depth: int = 2
+    pooler_dim: int
+    pooler_depth: int = 2
     num_heads: int | None = None
     per_depth_read_proj: bool = False
     attn_dim: int | None = None
@@ -2023,23 +2040,23 @@ class PerceiverConfig(Config):
         """Check the bottleneck against the encoder it will attach to."""
         if not PositionEncoding.is_rope(position_encoding):
             raise ValueError(
-                "the Perceiver requires a RoPE position_encoding: the "
-                "register grid is differentiated by per-cell 2D (row, col) "
+                "the AttentionPooler requires a RoPE position_encoding: the "
+                "location-token grid is differentiated by per-cell 2D (row, col) "
                 "coordinates. A 3D encoder is fine -- the bottleneck reads with the "
                 "spatial axes only."
             )
         heads = self.resolved_num_heads(encoder_num_heads)
-        # With a decoupled attn_dim the heads live at that width, not at register_dim
+        # With a decoupled attn_dim the heads live at that width, not at pooler_dim
         # (which only sizes the residual stream).
-        attn_width = self.attn_dim if self.attn_dim is not None else self.register_dim
+        attn_width = self.attn_dim if self.attn_dim is not None else self.pooler_dim
         if attn_width % heads != 0:
             raise ValueError(
-                f"register attention width ({attn_width}) must be divisible by the "
+                f"pooler attention width ({attn_width}) must be divisible by the "
                 f"bottleneck num_heads ({heads})"
             )
         if (attn_width // heads) % 4 != 0:
             raise ValueError(
-                "2D RoPE requires register head_dim divisible by 4, got "
+                "2D RoPE requires pooler head_dim divisible by 4, got "
                 f"{attn_width // heads}"
             )
         if self.student_dims is not None:
@@ -2058,14 +2075,14 @@ class PerceiverConfig(Config):
         position_encoding: str,
         rope_base: float,
         qk_norm: bool,
-    ) -> "Perceiver":
+    ) -> "AttentionPooler":
         """Build the bottleneck module for an encoder with these settings."""
-        return Perceiver(
+        return AttentionPooler(
             encoder_embedding_size=encoder_embedding_size,
-            register_dim=self.register_dim,
+            pooler_dim=self.pooler_dim,
             num_heads=self.resolved_num_heads(encoder_num_heads),
             mlp_ratio=mlp_ratio,
-            latent_transformer_depth=self.latent_depth,
+            pooler_depth=self.pooler_depth,
             use_2d_rope=PositionEncoding.is_rope(position_encoding),
             rope_base=rope_base,
             qk_norm=qk_norm,
@@ -2116,7 +2133,7 @@ class Encoder(FlexiVitBase):
         rope_temporal_base: float | None = None,
         rope_temporal_coordinate_scale: float = 1.0,
         spatial_pos_encoding: str | None = None,
-        perceiver_config: PerceiverConfig | None = None,
+        attention_pooler_config: AttentionPoolerConfig | None = None,
     ):
         """Initialize the encoder.
 
@@ -2167,9 +2184,9 @@ class Encoder(FlexiVitBase):
                 temporal RoPE coordinates (default 1.0 = raw days). E.g. set to
                 1/30 for months.
             spatial_pos_encoding: Deprecated alias for ``position_encoding``.
-            perceiver_config: If set, add a Perceiver-style spatial register
+            attention_pooler_config: If set, add an AttentionPooler: a dense spatial attention-pooling
                 bottleneck (and optionally its detached student readout); see
-                :class:`PerceiverConfig`. Requires a RoPE position encoding.
+                :class:`AttentionPoolerConfig`. Requires a RoPE position encoding.
         """
         self.tokenization_config = tokenization_config or TokenizationConfig()
         super().__init__(
@@ -2227,16 +2244,16 @@ class Encoder(FlexiVitBase):
         )
         self.norm = nn.LayerNorm(self.embedding_size)
 
-        self.perceiver_config = perceiver_config
-        self.use_perceiver = perceiver_config is not None
-        self.perceiver: Perceiver | None = None
-        self.register_dim: int | None = None
-        if perceiver_config is not None:
-            perceiver_config.validate(
+        self.attention_pooler_config = attention_pooler_config
+        self.use_attention_pooler = attention_pooler_config is not None
+        self.attention_pooler: AttentionPooler | None = None
+        self.pooler_dim: int | None = None
+        if attention_pooler_config is not None:
+            attention_pooler_config.validate(
                 encoder_num_heads=num_heads, position_encoding=self.position_encoding
             )
-            self.register_dim = perceiver_config.register_dim
-            self.perceiver = perceiver_config.build(
+            self.pooler_dim = attention_pooler_config.pooler_dim
+            self.attention_pooler = attention_pooler_config.build(
                 encoder_embedding_size=embedding_size,
                 encoder_num_heads=num_heads,
                 mlp_ratio=mlp_ratio,
@@ -2245,14 +2262,14 @@ class Encoder(FlexiVitBase):
                 qk_norm=qk_norm,
             )
 
-        # With a bottleneck the contrastive head projects from the register latents;
+        # With a bottleneck the contrastive head projects from the location tokens;
         # otherwise from the encoder patch-token output.
-        self.contrastive_from_registers = self.perceiver is not None
+        self.contrastive_from_location_tokens = self.attention_pooler is not None
         # When projecting from the register tokens the head operates at the width the
-        # bottleneck ships (its register_dim); the head reads the returned grid, not the
+        # bottleneck ships (its pooler_dim); the head reads the returned grid, not the
         # stack's residual stream. Otherwise it reads the encoder's patch tokens.
-        if self.register_dim is not None:
-            project_aggregate_embedding_size = self.register_dim
+        if self.pooler_dim is not None:
+            project_aggregate_embedding_size = self.pooler_dim
         else:
             project_aggregate_embedding_size = self.embedding_size
         self.project_and_aggregate = ProjectAndAggregate(
@@ -2573,17 +2590,19 @@ class Encoder(FlexiVitBase):
         input_res: int,
         token_exit_cfg: dict[str, int] | None = None,
         fast_pass: bool = False,
-        latent_patch_size: int | None = None,
+        location_query_patch_size: int | None = None,
         searchlight: "SearchlightSettings | None" = None,
     ) -> tuple[dict[str, Tensor], dict[str, Any] | None, dict[str, Any] | None]:
         """Apply the attention to the tokens and masks.
 
-        ``latent_patch_size`` sets the Perceiver's latent grid (see
-        :meth:`Perceiver.forward`); it requires a Perceiver. ``searchlight`` runs the
+        ``location_query_patch_size`` sets the AttentionPooler's location-query grid
+        (see :meth:`AttentionPooler.forward`); it requires an AttentionPooler. ``searchlight`` runs the
         attention under a sliding neighborhood (``nn/searchlight.py``).
         """
-        if latent_patch_size is not None and self.perceiver is None:
-            raise ValueError("latent_patch_size requires an encoder with a Perceiver")
+        if location_query_patch_size is not None and self.attention_pooler is None:
+            raise ValueError(
+                "location_query_patch_size requires an encoder with an AttentionPooler"
+            )
         tokens_only_dict, original_masks_dict, modalities_to_dims_dict = (
             self.split_tokens_masks_and_dims(x)
         )
@@ -2607,19 +2626,19 @@ class Encoder(FlexiVitBase):
             input_res,
             timestamps=timestamps,
         )
-        # Full (pre-masking) positions in collapsed order, kept for the register
-        # bottleneck read so registers attend over the encoded *visible* patch tokens
+        # Full (pre-masking) positions in collapsed order, kept for the AttentionPooler
+        # read so the location queries attend over the encoded *visible* patch tokens
         # using their original coordinates (`positions` below is reduced/packed in place).
-        register_kv_positions = positions
-        # The register grid has no temporal axis, so the bottleneck reads with 2D
+        pooler_kv_positions = positions
+        # The location-token grid has no temporal axis, so the bottleneck reads with 2D
         # (row, col) positions even when the encoder self-attention uses 3D RoPE: drop
         # the leading temporal coordinate (3D positions are ``(t, row, col)``). This
         # does not touch `positions`, which the encoder blocks still use for full 3D
         # RoPE.
-        if register_kv_positions is not None and PositionEncoding.is_3d_rope(
+        if pooler_kv_positions is not None and PositionEncoding.is_3d_rope(
             self.position_encoding
         ):
-            register_kv_positions = register_kv_positions[..., 1:]
+            pooler_kv_positions = pooler_kv_positions[..., 1:]
 
         tokens_dict.update(original_masks_dict)
         tokens, mask = self.collapse_and_combine_hwtc(tokens_dict)
@@ -2650,7 +2669,7 @@ class Encoder(FlexiVitBase):
                 modalities_to_dims_dict,
                 patch_size,
                 input_res,
-                latent_patch_size,
+                location_query_patch_size,
             )
 
         tokens, indices, new_mask, seq_lengths, max_seqlen, bool_mask = (
@@ -2746,32 +2765,38 @@ class Encoder(FlexiVitBase):
         # just use the original, unclipped mask here
         tokens = self._maybe_add_removed_tokens(tokens, indices, new_mask, fast_pass)
 
-        register_output = None
-        if self.perceiver is not None:
+        location_token_output = None
+        if self.attention_pooler is not None:
             spatial_grid = self._patch_grid_hw(tokens_only_dict)
-            registers, register_positions, student_registers = self.perceiver(
-                patch_tokens=tokens,
-                patch_positions=register_kv_positions,
-                visible_mask=bool_mask,
-                spatial_grid=spatial_grid,
-                patch_size=patch_size,
-                gsd_ratio=CompositeEncodings.calculate_gsd_ratio(input_res, patch_size)
-                * self.rope_coordinate_scale,
-                latent_patch_size=latent_patch_size,
+            location_tokens, location_query_positions, student_location_tokens = (
+                self.attention_pooler(
+                    patch_tokens=tokens,
+                    patch_positions=pooler_kv_positions,
+                    visible_mask=bool_mask,
+                    spatial_grid=spatial_grid,
+                    patch_size=patch_size,
+                    gsd_ratio=CompositeEncodings.calculate_gsd_ratio(
+                        input_res, patch_size
+                    )
+                    * self.rope_coordinate_scale,
+                    location_query_patch_size=location_query_patch_size,
+                )
             )
-            register_output = {
-                "registers": registers,
-                "register_positions": register_positions,
+            location_token_output = {
+                "location_tokens": location_tokens,
+                "location_query_positions": location_query_positions,
             }
-            if student_registers is not None:
-                register_output["student_registers"] = student_registers
+            if student_location_tokens is not None:
+                location_token_output["student_location_tokens"] = (
+                    student_location_tokens
+                )
 
         tokens_per_modality_dict = self.split_and_expand_per_modality(
             tokens, modalities_to_dims_dict
         )
         # merge original masks and the processed tokens
         tokens_per_modality_dict.update(original_masks_dict)
-        return tokens_per_modality_dict, token_norm_stats, register_output
+        return tokens_per_modality_dict, token_norm_stats, location_token_output
 
     def forward(
         self,
@@ -2780,7 +2805,7 @@ class Encoder(FlexiVitBase):
         input_res: int = BASE_GSD,
         token_exit_cfg: dict | None = None,
         fast_pass: bool = False,
-        latent_patch_size: int | None = None,
+        location_query_patch_size: int | None = None,
         searchlight: "SearchlightSettings | None" = None,
     ) -> dict[str, Any]:
         """Process masked input samples into token representations.
@@ -2791,10 +2816,10 @@ class Encoder(FlexiVitBase):
             input_res: Resolution of the input data
             token_exit_cfg: Configuration for token exit
             fast_pass: Whether to always pass None as the mask to the transformer, this enables torch based flash attention, and skips mask construciton and sorting
-            latent_patch_size: Pixels per Perceiver latent along each side; must
-                divide ``patch_size``. None = one latent per token. Requires a
-                Perceiver.
-            searchlight: Inference only: every token and latent attends within its
+            location_query_patch_size: Pixels per location query along each side; must
+                divide ``patch_size``. None = one location query per token. Requires a
+                AttentionPooler.
+            searchlight: Inference only: every token and location query attends within its
                 own sliding neighborhood over one whole domain (batch size 1),
                 instead of the window it was cropped to. None = the stock forward.
                 See ``nn/searchlight.py``; ``searchlight.embed_domain`` runs large
@@ -2808,12 +2833,12 @@ class Encoder(FlexiVitBase):
 
         x = self.drop_unencodable_modalities(x)
         patchified_tokens_and_masks = self.patch_embeddings.forward(x, patch_size)
-        register_output: dict[str, Any] | None = None
+        location_token_output: dict[str, Any] | None = None
         token_norm_stats: dict[str, Any] | None = None
         if token_exit_cfg is None or any(
             [exit_depth > 0 for exit_depth in token_exit_cfg.values()]
         ):
-            patchified_tokens_and_masks, token_norm_stats, register_output = (
+            patchified_tokens_and_masks, token_norm_stats, location_token_output = (
                 self.apply_attn(
                     x=patchified_tokens_and_masks,
                     timestamps=x.timestamps,
@@ -2821,7 +2846,7 @@ class Encoder(FlexiVitBase):
                     input_res=input_res,
                     token_exit_cfg=token_exit_cfg,
                     fast_pass=fast_pass,
-                    latent_patch_size=latent_patch_size,
+                    location_query_patch_size=location_query_patch_size,
                     searchlight=searchlight,
                 )
             )
@@ -2834,21 +2859,25 @@ class Encoder(FlexiVitBase):
         if token_norm_stats:
             output_dict["token_norm_stats"] = token_norm_stats
 
-        if register_output is not None:
-            output_dict["registers"] = register_output["registers"]
-            output_dict["register_positions"] = register_output["register_positions"]
-            if "student_registers" in register_output:
-                output_dict["student_registers"] = register_output["student_registers"]
+        if location_token_output is not None:
+            output_dict["location_tokens"] = location_token_output["location_tokens"]
+            output_dict["location_query_positions"] = location_token_output[
+                "location_query_positions"
+            ]
+            if "student_location_tokens" in location_token_output:
+                output_dict["student_location_tokens"] = location_token_output[
+                    "student_location_tokens"
+                ]
 
         if not fast_pass:
-            if self.contrastive_from_registers:
-                # The contrastive projection reads the register tokens (only) and is sized
-                # to register_dim. Registers are produced whenever attention runs (the
+            if self.contrastive_from_location_tokens:
+                # The contrastive projection reads the location tokens (only) and is sized
+                # to pooler_dim. Location tokens are produced whenever attention runs (the
                 # standard, token_exit_cfg=None pass); the only path that skips them is the
                 # all-zero-exit target pass, which discards project_aggregated anyway.
-                if register_output is not None:
+                if location_token_output is not None:
                     output_dict["project_aggregated"] = self.project_and_aggregate(
-                        register_output["registers"]
+                        location_token_output["location_tokens"]
                     )
             else:
                 # No bottleneck: project from the encoder's patch-token output
@@ -2906,8 +2935,8 @@ class PredictorBase(FlexiVitBase):
         rope_temporal_base: float | None = None,
         rope_temporal_coordinate_scale: float = 1.0,
         spatial_pos_encoding: str | None = None,
-        use_perceiver: bool = False,
-        register_dim: int | None = None,
+        use_attention_pooler: bool = False,
+        pooler_dim: int | None = None,
     ):
         """Initialize the predictor.
 
@@ -2940,9 +2969,9 @@ class PredictorBase(FlexiVitBase):
                 temporal RoPE coordinates (default 1.0 = raw days). E.g. set to
                 1/30 for months.
             spatial_pos_encoding: Deprecated alias for ``position_encoding``.
-            use_perceiver: If True, the decoder cross-attends to the encoder
-                register grid instead of the visible patch tokens.
-            register_dim: Width of the register grid; required when use_perceiver.
+            use_attention_pooler: If True, the decoder cross-attends to the encoder
+                location-token grid instead of the visible patch tokens.
+            pooler_dim: Width of the location-token grid; required when use_attention_pooler.
         """
         self.tokenization_config = tokenization_config or TokenizationConfig()
         super().__init__(
@@ -2985,13 +3014,15 @@ class PredictorBase(FlexiVitBase):
         self.input_norm = nn.LayerNorm(encoder_embedding_size)
         self.norm = nn.LayerNorm(decoder_embedding_size)
 
-        self.use_perceiver = use_perceiver
-        self.register_to_decoder_embed: nn.Linear | None = None
-        if use_perceiver:
-            if register_dim is None:
-                raise ValueError("register_dim is required when use_perceiver is True")
-            self.register_to_decoder_embed = nn.Linear(
-                register_dim, decoder_embedding_size, bias=True
+        self.use_attention_pooler = use_attention_pooler
+        self.location_tokens_to_decoder_embed: nn.Linear | None = None
+        if use_attention_pooler:
+            if pooler_dim is None:
+                raise ValueError(
+                    "pooler_dim is required when use_attention_pooler is True"
+                )
+            self.location_tokens_to_decoder_embed = nn.Linear(
+                pooler_dim, decoder_embedding_size, bias=True
             )
 
         self.apply(self._init_weights)
@@ -3166,8 +3197,8 @@ class Predictor(PredictorBase):
         timestamps: Tensor,
         patch_size: int,
         input_res: int,
-        registers: Tensor | None = None,
-        register_positions: Tensor | None = None,
+        location_tokens: Tensor | None = None,
+        location_query_positions: Tensor | None = None,
     ) -> dict[str, Tensor]:
         """Apply attention to the tokens."""
         tokens_only_dict, original_masks_dict, modalities_to_dims_dict = (
@@ -3235,26 +3266,26 @@ class Predictor(PredictorBase):
             cu_seqlens_tokens_to_decode = None
             cu_seqlens_unmasked_tokens = None
 
-        # Decoder context: either the visible patch tokens (default) or, for the register
-        # bottleneck, the encoder register grid (projected to the decoder dim). The decode
+        # Decoder context: either the visible patch tokens (default) or, for the AttentionPooler,
+        # the encoder location-token grid (projected to the decoder dim). The decode
         # queries are mask tokens at masked-patch coords; they attend only to this context.
-        if registers is not None:
-            if self.register_to_decoder_embed is None:
+        if location_tokens is not None:
+            if self.location_tokens_to_decoder_embed is None:
                 raise ValueError(
-                    "Predictor received registers but was built without "
-                    "use_perceiver=True"
+                    "Predictor received location_tokens but was built without "
+                    "use_attention_pooler=True"
                 )
             # Cross-attention consumes a token sequence, so flatten the grid here.
-            # register_positions is already flat and in the same row-major order.
-            context = self.register_to_decoder_embed(
-                rearrange(registers, "b h w d -> b (h w) d")
+            # location_query_positions is already flat and in the same row-major order.
+            context = self.location_tokens_to_decoder_embed(
+                rearrange(location_tokens, "b h w d -> b (h w) d")
             )
-            context_positions = register_positions
-            batch_size, num_registers = context.shape[0], context.shape[1]
+            context_positions = location_query_positions
+            batch_size, num_location_tokens = context.shape[0], context.shape[1]
             if self.use_flash_attn:
-                # Every register is valid, so "packing" for varlen is just a flatten --
+                # Every location token is valid, so "packing" for varlen is just a flatten --
                 # a view, not the gather pack_tokens does for a real validity mask --
-                # and every sample contributes the same num_registers keys, so
+                # and every sample contributes the same num_location_tokens keys, so
                 # cu_seqlens is a fixed stride.
                 context = torch.flatten(context, end_dim=1)
                 if context_positions is not None:
@@ -3262,14 +3293,14 @@ class Predictor(PredictorBase):
                 cu_seqlens_context = get_cumulative_sequence_lengths(
                     torch.full(
                         (batch_size,),
-                        num_registers,
+                        num_location_tokens,
                         dtype=torch.int32,
                         device=context.device,
                     )
                 )
             else:
                 cu_seqlens_context = None
-            max_length_of_context = num_registers
+            max_length_of_context = num_location_tokens
             context_attn_mask = None
         else:
             context = unmasked_tokens
@@ -3324,8 +3355,8 @@ class Predictor(PredictorBase):
         timestamps: Tensor,
         patch_size: int,
         input_res: int = BASE_GSD,
-        registers: Tensor | None = None,
-        register_positions: Tensor | None = None,
+        location_tokens: Tensor | None = None,
+        location_query_positions: Tensor | None = None,
     ) -> TokensAndMasks:
         """Generate predictions from encoded token representations.
 
@@ -3334,11 +3365,11 @@ class Predictor(PredictorBase):
             timestamps: Timestamps of the tokens
             patch_size: Patch size of the tokens
             input_res: Input resolution of the tokens
-            registers: Optional encoder register grid ``[B, n_h, n_w, register_dim]``.
-                When provided (Perceiver), the decoder cross-attends to it
+            location_tokens: Optional encoder location-token grid ``[B, n_h, n_w, pooler_dim]``.
+                When provided (AttentionPooler), the decoder cross-attends to it
                 instead of the visible patch tokens; it is flattened to a token
                 sequence here.
-            register_positions: Optional flat ``[B, n_h * n_w, 2]`` register coordinates
+            location_query_positions: Optional flat ``[B, n_h * n_w, 2]`` location-query coordinates
                 for RoPE, row-major to match the flattened grid.
 
         Returns:
@@ -3368,8 +3399,8 @@ class Predictor(PredictorBase):
             timestamps,
             patch_size,
             input_res,
-            registers=registers,
-            register_positions=register_positions,
+            location_tokens=location_tokens,
+            location_query_positions=location_query_positions,
         )
         # TODO: Factor this out into a more readable function
         output_dict = {}
@@ -3438,16 +3469,16 @@ class EncoderConfig(Config):
     # so old checkpoint configs deserialized via Config.from_dict still carry it
     # through to __post_init__ for reconciliation.
     spatial_pos_encoding: str | None = None
-    # Perceiver-style spatial Perceiver; None -> plain encoder.
-    perceiver_config: PerceiverConfig | None = None
+    # Dense spatial attention pooler (see AttentionPoolerConfig); None -> plain encoder.
+    attention_pooler_config: AttentionPoolerConfig | None = None
 
     def __post_init__(self) -> None:
-        """Reconcile the deprecated alias and coerce a raw ``perceiver_config`` dict."""
-        if isinstance(self.perceiver_config, dict):
-            self.perceiver_config = PerceiverConfig(
+        """Reconcile the deprecated alias and coerce a raw ``attention_pooler_config`` dict."""
+        if isinstance(self.attention_pooler_config, dict):
+            self.attention_pooler_config = AttentionPoolerConfig(
                 **{
                     k: v
-                    for k, v in self.perceiver_config.items()
+                    for k, v in self.attention_pooler_config.items()
                     if k != Config.CLASS_NAME_FIELD
                 }
             )
@@ -3477,8 +3508,8 @@ class EncoderConfig(Config):
             raise ValueError(
                 f"rope_coordinate_scale must be positive, got {self.rope_coordinate_scale}"
             )
-        if self.perceiver_config is not None:
-            self.perceiver_config.validate(
+        if self.attention_pooler_config is not None:
+            self.attention_pooler_config.validate(
                 encoder_num_heads=self.num_heads,
                 position_encoding=self.position_encoding,
             )
@@ -3551,10 +3582,10 @@ class PredictorConfig(Config):
     # so old checkpoint configs deserialized via Config.from_dict still carry it
     # through to __post_init__ for reconciliation.
     spatial_pos_encoding: str | None = None
-    # Perceiver-style Perceiver: when True the decoder cross-attends to the
-    # encoder register grid (of width register_dim) instead of the visible patch tokens.
-    use_perceiver: bool = False
-    register_dim: int | None = None
+    # AttentionPooler: when True the decoder cross-attends to the
+    # encoder location-token grid (of width pooler_dim) instead of the visible patch tokens.
+    use_attention_pooler: bool = False
+    pooler_dim: int | None = None
 
     def __post_init__(self) -> None:
         """Reconcile the deprecated ``spatial_pos_encoding`` alias."""
@@ -3571,8 +3602,8 @@ class PredictorConfig(Config):
             for modality in self.supported_modalities:
                 if modality not in Modality.values():
                     raise ValueError(f"Modality {modality} is not supported")
-        if self.use_perceiver and self.register_dim is None:
-            raise ValueError("register_dim must be set when use_perceiver is True")
+        if self.use_attention_pooler and self.pooler_dim is None:
+            raise ValueError("pooler_dim must be set when use_attention_pooler is True")
         if self.tokenization_config is not None:
             self.tokenization_config.validate()
         if self.position_encoding not in PositionEncoding.values():
