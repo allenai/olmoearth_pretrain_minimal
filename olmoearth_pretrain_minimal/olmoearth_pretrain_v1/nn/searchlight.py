@@ -5,7 +5,7 @@ so a pixel's context jumps at every tile seam. Searchlight instead runs a whole 
 in one pass and gives every query the window it would see if a 16 px training window
 were centred on it: ``W = neighborhood_attention_size_px / patch_size`` cells per side, sliding one cell at a
 time and shifted inward (not shrunk) at the domain edge. The rule applies to all three
-attentions of the ViT + AttentionPooler encoder (v1.3 RC, pix512):
+attentions of the v1.3 encoder (ViT + AttentionPooler):
 
 * ViT self-attention: a token attends every token whose cell is in its box;
 * AttentionPooler read: a location query attends every token in the box around its cell;
@@ -21,8 +21,8 @@ faster (see :func:`neighborhood_attention`). On CPU a dense masked reference is 
 A domain one window wide reproduces the stock forward; larger domains are run as
 overlapping crops by :func:`embed_domain`.
 
-How to run it, setup and measured speed / quality: ``docs/Searchlight-Inference.md``
-in allenai/olmoearth_pretrain.
+How to run it and set it up: ``docs/Searchlight-Inference.md`` in
+allenai/olmoearth_pretrain.
 
 Installing NATTEN (not a declared dependency; what worked on our H100 nodes):
 
@@ -106,8 +106,9 @@ def searchlight_reach_px(
 
     Every attention spreads context by at most ``W // 2`` cells: each ViT block, the
     last read (earlier reads see the same tokens) and each query self-attention.
-    An ``embed_domain`` overlap of twice this is exact; a much smaller one is enough
-    in practice (see ``docs/Searchlight-Inference.md`` in allenai/olmoearth_pretrain).
+    An ``embed_domain`` overlap of twice this is exact; a smaller one is an
+    approximation near crop boundaries (see ``docs/Searchlight-Inference.md`` in
+    allenai/olmoearth_pretrain).
     """
     return (
         (vit_depth + 1 + pooler_depth)
