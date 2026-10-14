@@ -12,18 +12,19 @@ depends on how the model was trained:
 
 * Models trained with band dropout (v1.1 onward) saw dropped bands as 0 in normalized
   space. Missing bands are set to 0 and band sets with every band missing are masked.
-* Models trained without band dropout (v1) never saw zeroed bands. Missing bands are
-  interpolated, from the same band at the nearest timesteps when available and
-  otherwise from the bands nearest in wavelength.
+* Models trained without band dropout (v1) never saw zeroed bands. Each missing band
+  is copied from the present band nearest to it in wavelength, as olmoearth_pretrain's
+  evals do.
 
 In both cases a pixel and timestep with no band at all is masked. A warning is
-raised when more than ``MAX_INTERPOLATED_FRACTION`` of a modality's bands are
-interpolated at a pixel and timestep, or when more of a band set is set to 0 than the
-model was trained with.
+raised when more than ``MAX_COPIED_FRACTION`` of a modality's bands are copied at a
+pixel and timestep, or when more of a band set is set to 0 than the model was trained
+with.
 """
 
 from __future__ import annotations
 
+import functools
 import warnings
 from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING
@@ -31,6 +32,9 @@ from typing import TYPE_CHECKING
 import torch
 from torch import nn
 
+from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.data.normalize import (
+    load_computed_config,
+)
 from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.constants import Modality
 from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.datatypes import (
     MaskedOlmoEarthSample,
@@ -40,9 +44,12 @@ from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.datatypes import (
 if TYPE_CHECKING:
     from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.nn.flexi_vit import Encoder
 
-# Warn when interpolation fills more than this fraction of a modality's bands at a
-# pixel and timestep. Matches the band dropout rate of v1.1 and v1.2.
-MAX_INTERPOLATED_FRACTION = 0.2
+# Warn when more than this fraction of a modality's bands are copied from other bands
+# at a pixel and timestep. Matches the band dropout rate of v1.1 and v1.2.
+MAX_COPIED_FRACTION = 0.2
+
+# All released models were pretrained on data normalized with this multiplier.
+TRAINING_STD_MULTIPLIER = 2.0
 
 SPECTRAL_GROUPS: dict[str, list[dict[str, float]]] = {
     Modality.SENTINEL2_L2A.name: [
@@ -133,86 +140,57 @@ def _split_mask(
     )
 
 
-def _neighbors(
-    valid: torch.Tensor, dim: int
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Index of the nearest valid entry at or before, and at or after, each position.
-
-    Returns:
-        ``(prev, has_prev, next, has_next)``; indices are clamped to a valid range.
-    """
-    n = valid.shape[dim]
-    shape = [1] * valid.ndim
-    shape[dim] = n
-    index = torch.arange(n, device=valid.device).view(shape)
-    prev = torch.where(valid, index, -1).cummax(dim=dim).values
-    nxt = torch.where(valid, index, n).flip(dim).cummin(dim=dim).values.flip(dim)
-    return prev.clamp(min=0), prev >= 0, nxt.clamp(max=n - 1), nxt < n
+@functools.cache
+def _band_ranges(modality: str) -> tuple[tuple[float, ...], tuple[float, ...]]:
+    """Lower bound and width of each band's normalization range, in band order."""
+    stats = load_computed_config()[modality]
+    bands = Modality.get(modality).band_order
+    k = TRAINING_STD_MULTIPLIER
+    low = tuple(stats[band]["mean"] - k * stats[band]["std"] for band in bands)
+    width = tuple(2 * k * stats[band]["std"] for band in bands)
+    return low, width
 
 
-def _interpolate(
-    data: torch.Tensor,
-    missing: torch.Tensor,
-    dim: int,
-    position: torch.Tensor,
-    fill: torch.Tensor,
-) -> tuple[torch.Tensor, torch.Tensor]:
-    """Linearly interpolate the ``fill`` entries of ``data`` along ``dim``.
-
-    Uses the nearest present entries on each side, at coordinates ``position`` (one
-    per index along ``dim``), and copies the nearest one when there is only one side.
-    """
-    prev, has_prev, nxt, has_next = _neighbors(~missing, dim)
-    values = data.masked_fill(missing, 0)
-    prev_value = values.gather(dim, prev)
-    next_value = values.gather(dim, nxt)
-    shape = [1] * data.ndim
-    shape[dim] = -1
-    here = position.view(shape)
-    prev_pos, next_pos = position[prev], position[nxt]
-    both = has_prev & has_next & (next_pos > prev_pos)
-    weight = torch.where(both, (here - prev_pos) / (next_pos - prev_pos), 0)
-    interpolated = torch.where(
-        both,
-        prev_value + weight * (next_value - prev_value),
-        torch.where(has_prev, prev_value, next_value),
-    )
-    filled = fill & (has_prev | has_next)
-    return torch.where(filled, interpolated, data), missing & ~filled
-
-
-def _interpolate_bands(
+def _copy_nearest_bands(
     data: torch.Tensor, missing: torch.Tensor, modality: str
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """Fill missing bands from other timesteps, then from nearby wavelengths.
+    """Fill each missing band with the present band nearest to it in wavelength.
 
-    Only pixels and timesteps that still have some band are filled.
+    This is how olmoearth_pretrain's evals fill bands a dataset lacks (B01 from B02,
+    B09 from B8A, B10 from B11): the source band's raw value is copied and then
+    normalized with the missing band's own statistics. Ties go to the shorter
+    wavelength. Bands are only copied within a group of ``SPECTRAL_GROUPS``.
     """
-    spec = Modality.get(modality)
-    fill = missing & ~missing.all(dim=-1, keepdim=True)
-    if spec.is_multitemporal and data.ndim == 5:
-        time = torch.arange(data.shape[-2], device=data.device, dtype=data.dtype)
-        data, missing = _interpolate(data, missing, -2, time, fill)
-        fill = fill & missing
-    for group in SPECTRAL_GROUPS.get(modality, []):
-        index = [spec.band_order.index(band) for band in group]
-        wavelength = torch.tensor(
-            list(group.values()), device=data.device, dtype=data.dtype
-        )
-        order = wavelength.argsort()
-        index_t = torch.tensor(index, device=data.device)[order]
-        group_data, group_missing = _interpolate(
-            data[..., index_t],
-            missing[..., index_t],
-            -1,
-            wavelength[order],
-            fill[..., index_t],
-        )
-        data = data.clone()
-        data[..., index_t] = group_data
-        missing = missing.clone()
-        missing[..., index_t] = group_missing
-    return data, missing
+    groups = SPECTRAL_GROUPS.get(modality)
+    if not groups:
+        return data, missing
+    band_order = Modality.get(modality).band_order
+    low_list, width_list = _band_ranges(modality)
+    low = torch.tensor(low_list, dtype=data.dtype, device=data.device)
+    width = torch.tensor(width_list, dtype=data.dtype, device=data.device)
+    raw = data * width + low
+    filled, still_missing = data.clone(), missing.clone()
+    for group in groups:
+        for target, wavelength in group.items():
+            sources = sorted(
+                (band for band in group if band != target),
+                key=lambda band: (abs(group[band] - wavelength), group[band]),
+            )
+            t = band_order.index(target)
+            value = torch.zeros_like(data[..., t])
+            found = torch.zeros_like(missing[..., t])
+            # Nearest last, so it overwrites any farther band that is present.
+            for source in reversed(sources):
+                s = band_order.index(source)
+                present = ~missing[..., s]
+                value = torch.where(present, raw[..., s], value)
+                found = found | present
+            copy = missing[..., t] & found
+            filled[..., t] = torch.where(
+                copy, (value - low[t]) / width[t], data[..., t]
+            )
+            still_missing[..., t] = missing[..., t] & ~found
+    return filled, still_missing
 
 
 def handle_missing_bands(
@@ -246,7 +224,7 @@ def handle_missing_bands(
             raise ValueError(f"Modality {modality!r} is not present in the sample.")
 
     tokenization = encoder.tokenization_config
-    interpolate = encoder.band_dropout_rate == 0
+    copy_bands = encoder.band_dropout_rate == 0
     updates: dict[str, torch.Tensor] = {}
     for modality in sample.modalities:
         if modality not in encoder.patch_embeddings.supported_modality_names:
@@ -281,22 +259,22 @@ def handle_missing_bands(
         if not missing.any():
             continue
 
-        if interpolate:
+        if copy_bands:
             before = missing
-            data, missing = _interpolate_bands(data, missing, modality)
+            data, missing = _copy_nearest_bands(data, missing, modality)
             worst = int((before & ~missing).sum(dim=-1).max())
-            if worst / spec.num_bands > MAX_INTERPOLATED_FRACTION:
+            if worst / spec.num_bands > MAX_COPIED_FRACTION:
                 warnings.warn(
                     f"Up to {worst} of the {spec.num_bands} {modality} bands were "
-                    "interpolated at the same pixel and timestep. The model was not "
-                    "trained with missing bands, so its outputs may degrade.",
+                    "copied from other bands at the same pixel and timestep. The model "
+                    "was not trained with missing bands, so its outputs may degrade.",
                     UserWarning,
                     stacklevel=3,
                 )
         data = data.masked_fill(missing, 0)
         updates[modality] = data
 
-        trained_with_dropout = not interpolate and (
+        trained_with_dropout = not copy_bands and (
             encoder.band_dropout_modalities is None
             or modality in encoder.band_dropout_modalities
         )
@@ -311,7 +289,7 @@ def handle_missing_bands(
             worst = int(num_missing[partial].max()) if partial.any() else 0
             if worst / len(band_set) > allowed:
                 names = [spec.band_order[i] for i in band_set]
-                how = "could not be interpolated and were" if interpolate else "were"
+                how = "could not be copied and were" if copy_bands else "were"
                 warnings.warn(
                     f"Up to {worst} of the {len(band_set)} {modality} bands {names} "
                     f"{how} set to 0 in the same token. The model was not trained "

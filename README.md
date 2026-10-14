@@ -219,13 +219,15 @@ encoder handles them on every forward pass:
 
 - **v1.1 and v1.2** were trained with band dropout, so missing bands are set to 0
   after normalization, which is what the model saw for dropped bands.
-- **v1** was not, so missing bands are interpolated: from the same band at the
-  nearest timesteps when there are any, otherwise from the bands nearest in
-  wavelength (Sentinel-2 and Landsat; thermal bands only from thermal bands).
+- **v1** was not, so each missing band is copied from the present band nearest to
+  it in wavelength at the same pixel and timestep (e.g. B01 from B02, B09 from B8A),
+  as the olmoearth_pretrain evals do: the raw value is copied and normalized with
+  the missing band's own statistics. This applies to Sentinel-2 and Landsat, with
+  thermal bands only copied from thermal bands.
 - A pixel and timestep with no bands at all, or (v1.1, v1.2) a band set with all its
   bands missing, is masked so the encoder does not attend to it.
 - A `UserWarning` is raised when the input is out of distribution for the model:
-  more than 20% of a modality's bands interpolated (v1) or of a band set zeroed
+  more than 20% of a modality's bands copied (v1) or of a band set zeroed
   (v1.1, v1.2) at a pixel and timestep, or a band that cannot be filled, such as a
   missing Sentinel-1 band. Sentinel-2 without B01 and B09 does not warn; Sentinel-2
   with only RGB and NIR does.

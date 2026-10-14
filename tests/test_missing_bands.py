@@ -8,7 +8,6 @@ import pytest
 import torch
 
 from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.data.missing_bands import (
-    SPECTRAL_GROUPS,
     fill_missing_bands,
     handle_missing_bands,
 )
@@ -136,48 +135,67 @@ def test_v1_2_warns_for_modality_without_band_dropout() -> None:
     assert (_band(out, S1, "vh") == 0).all()
 
 
-def test_v1_2_does_not_interpolate_over_time() -> None:
+def test_v1_2_zero_fills_single_timestep() -> None:
     sample = _with_nan(_sample(), S2, ["B01"], t=1)
     out = handle_missing_bands(sample, _encoder(v1=False))
     assert (_band(out, S2, "B01")[..., 1] == 0).all()
 
 
-# v1: missing bands are interpolated, over time first, then over wavelength.
+# v1: each missing band is copied from the nearest present band in wavelength.
 
 
-def test_v1_interpolates_over_time() -> None:
-    sample = _with_nan(_sample(), S2, ["B01"], t=1)
+def _raw_s2(batch: int = B) -> np.ndarray:
+    rng = np.random.default_rng(0)
+    return rng.uniform(100, 5000, (batch, H, W, T, S2.num_bands)).astype(np.float32)
+
+
+def _normalized(raw: np.ndarray) -> MaskedOlmoEarthSample:
+    data = Normalizer(std_multiplier=2.0).normalize(S2, raw)
+    return MaskedOlmoEarthSample(
+        timestamps=_timestamps(raw.shape[0]),
+        sentinel2_l2a=torch.as_tensor(data, dtype=torch.float32),
+    )
+
+
+def test_v1_copies_bands_like_olmoearth_pretrain_evals() -> None:
+    # olmoearth_pretrain's PASTIS eval fills B01 from B02 and B09 from B8A in raw
+    # units, then normalizes with the pretraining stats.
+    raw = _raw_s2()
+    imputed = raw.copy()
+    order = S2.band_order
+    imputed[..., order.index("B01")] = raw[..., order.index("B02")]
+    imputed[..., order.index("B09")] = raw[..., order.index("B8A")]
+    expected = _normalized(imputed)
+
+    sample = _with_nan(_normalized(raw), S2, ["B01", "B09"])
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         out = handle_missing_bands(sample, _encoder(v1=True))
-    b01 = _band(sample, S2, "B01")
-    expected = (b01[..., 0] + b01[..., 2]) / 2
-    assert torch.allclose(_band(out, S2, "B01")[..., 1], expected)
+    # B01 and B09 form a whole band set in v1; it is filled, not masked.
+    assert torch.allclose(_data(out), _data(expected), atol=1e-5)
     assert (_mask(out) == VISIBLE).all()
 
 
-def test_v1_copies_nearest_timestep_at_the_edge() -> None:
-    sample = _with_nan(_sample(), S2, ["B01"], t=slice(1, None))
+def test_v1_copies_from_the_same_timestep_only() -> None:
+    raw = _raw_s2()
+    imputed = raw.copy()
+    order = S2.band_order
+    imputed[..., 1, order.index("B01")] = raw[..., 1, order.index("B02")]
+    sample = _with_nan(_normalized(raw), S2, ["B01"], t=1)
     out = handle_missing_bands(sample, _encoder(v1=True))
-    b01 = _band(out, S2, "B01")
-    assert torch.equal(b01[..., 1], b01[..., 0])
-    assert torch.equal(b01[..., 2], b01[..., 0])
+    assert torch.allclose(_data(out), _data(_normalized(imputed)), atol=1e-5)
 
 
-def test_v1_interpolates_over_wavelength_when_always_missing() -> None:
-    # B01 and B09 form a whole band set in v1; it is interpolated, not masked.
-    sample = _with_nan(_sample(), S2, ["B01", "B09"])
-    with warnings.catch_warnings():
-        warnings.simplefilter("error")
-        out = handle_missing_bands(sample, _encoder(v1=True))
-    wl = SPECTRAL_GROUPS[S2.name][0]
-    # B01 (443 nm) is below every other band, so it copies B02 (490 nm).
-    assert torch.equal(_band(out, S2, "B01"), _band(sample, S2, "B02"))
-    # B09 (945 nm) is between B8A (865 nm) and B11 (1610 nm).
-    w = (wl["B09"] - wl["B8A"]) / (wl["B11"] - wl["B8A"])
-    b8a, b11 = _band(sample, S2, "B8A"), _band(sample, S2, "B11")
-    assert torch.allclose(_band(out, S2, "B09"), b8a + w * (b11 - b8a))
-    assert (_mask(out) == VISIBLE).all()
+def test_v1_copies_the_nearest_present_band() -> None:
+    # B05 (705 nm) is nearest B06 (740 nm); with B06 also missing, B04 (665 nm).
+    raw = _raw_s2()
+    order = S2.band_order
+    sample = _with_nan(_normalized(raw), S2, ["B05", "B06"])
+    out = handle_missing_bands(sample, _encoder(v1=True))
+    imputed = raw.copy()
+    imputed[..., order.index("B05")] = raw[..., order.index("B04")]
+    imputed[..., order.index("B06")] = raw[..., order.index("B07")]
+    assert torch.allclose(_data(out), _data(_normalized(imputed)), atol=1e-5)
 
 
 @pytest.mark.parametrize("v1", [True, False], ids=["v1", "v1.2"])
@@ -189,23 +207,23 @@ def test_rgb_nir_only_warns(v1: bool) -> None:
     assert torch.isfinite(_data(out)).all()
 
 
-def test_v1_temporal_interpolation_counts_toward_warning() -> None:
+def test_v1_warns_when_many_bands_copied() -> None:
     sample = _with_nan(_sample(), S2, ["B05", "B06", "B07"], t=1)
     with pytest.warns(UserWarning, match="Up to 3 of the 12 sentinel2_l2a bands were"):
         handle_missing_bands(sample, _encoder(v1=True))
 
 
-def test_v1_does_not_interpolate_thermal_from_reflective_bands() -> None:
+def test_v1_does_not_copy_thermal_from_reflective_bands() -> None:
     sample = _with_nan(_sample(LANDSAT), LANDSAT, ["B10", "B11"])
-    with pytest.warns(UserWarning, match="could not be interpolated"):
+    with pytest.warns(UserWarning, match="could not be copied"):
         out = handle_missing_bands(sample, _encoder(v1=True))
     assert (_band(out, LANDSAT, "B10") == 0).all()
     assert (_band(out, LANDSAT, "B11") == 0).all()
 
 
-def test_v1_warns_when_nothing_to_interpolate_from() -> None:
+def test_v1_warns_when_nothing_to_copy_from() -> None:
     sample = _with_nan(_sample(S1), S1, ["vh"])
-    with pytest.warns(UserWarning, match="could not be interpolated"):
+    with pytest.warns(UserWarning, match="could not be copied"):
         out = handle_missing_bands(sample, _encoder(v1=True))
     assert (_band(out, S1, "vh") == 0).all()
 
@@ -232,8 +250,8 @@ def test_per_band_mask_marks_bands_missing(v1: bool) -> None:
     out = handle_missing_bands(sample, _encoder(v1))
     assert _mask(out).shape == (B, H, W, T, 3 if v1 else 1)
     assert (_mask(out) == VISIBLE).all()
-    expected = _band(sample, S2, "B02") if v1 else torch.zeros(B, H, W, T)
-    assert torch.equal(_band(out, S2, "B01"), expected)
+    by_nan = _with_nan(sample._replace(sentinel2_l2a_mask=None), S2, ["B01"])
+    assert torch.equal(_data(out), _data(handle_missing_bands(by_nan, _encoder(v1))))
 
 
 @pytest.mark.parametrize(
