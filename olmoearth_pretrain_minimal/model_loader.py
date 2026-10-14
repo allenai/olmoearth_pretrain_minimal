@@ -223,10 +223,10 @@ def _encoder_input_modalities_from_config(config_dict: dict) -> list[str]:
 
 
 # Training-only heads that pretraining checkpoints may carry but this package does
-# not build (they read the Perceiver register grid to compute auxiliary losses).
+# not build (they read the AttentionPooler location-token grid to compute auxiliary losses).
 _TRAINING_ONLY_STATE_DICT_PREFIXES = (
     "supervision_head.",
-    "register_distillation_head.",
+    "location_token_distillation_head.",
 )
 
 

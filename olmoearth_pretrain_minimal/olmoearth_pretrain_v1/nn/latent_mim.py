@@ -123,9 +123,9 @@ class LatentMIM(nn.Module, DistributedMixins):
         latent, latent_projected_and_pooled, decoder_kwargs = unpack_encoder_output(
             output_dict
         )
-        # The decoder reads only the registers; the Perceiver's student readout is
+        # The decoder reads only the location_tokens; the AttentionPooler's student readout is
         # for training losses (and evals), never a decoder input.
-        decoder_kwargs.pop("student_registers", None)
+        decoder_kwargs.pop("student_location_tokens", None)
         extra_metrics = {}
         if token_norm_stats is not None:
             extra_metrics["token_norm_stats"] = token_norm_stats
