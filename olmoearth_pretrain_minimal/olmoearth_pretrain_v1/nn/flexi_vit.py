@@ -1820,7 +1820,7 @@ class AttentionPooler(nn.Module):
         device: torch.device,
         location_query_patch_size: int,
     ) -> Tensor:
-        """Register (latent) centre coordinates in the token RoPE frame.
+        """Query centre coordinates in the token RoPE frame.
 
         Token ``i`` sits at ``i * gsd_ratio`` (the token positions of
         ``FlexiVitBase``). With a location-query patch size ``s``, query ``k`` of an axis
@@ -2265,7 +2265,7 @@ class Encoder(FlexiVitBase):
         # With a bottleneck the contrastive head projects from the location tokens;
         # otherwise from the encoder patch-token output.
         self.contrastive_from_location_tokens = self.attention_pooler is not None
-        # When projecting from the register tokens the head operates at the width the
+        # When projecting from the location tokens the head operates at the width the
         # bottleneck ships (its pooler_dim); the head reads the returned grid, not the
         # stack's residual stream. Otherwise it reads the encoder's patch tokens.
         if self.pooler_dim is not None:
