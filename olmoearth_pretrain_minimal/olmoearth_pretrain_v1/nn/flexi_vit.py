@@ -11,6 +11,9 @@ from einops import rearrange, reduce, repeat
 from torch import Tensor, nn
 from torch.distributed.fsdp import fully_shard
 
+from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.data.missing_bands import (
+    handle_missing_bands,
+)
 from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.nn.attention import Block
 from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.nn.encodings import (
     PositionEncoding,
@@ -2472,10 +2475,13 @@ class Encoder(FlexiVitBase):
         fast_pass: bool,
     ) -> Tensor | None:
         """Get the attention mask or None if we should pass None to the transformer."""
-        if fast_pass or not self.training:
+        if fast_pass:
             return None
-        else:
-            return new_mask
+        # Outside training the mask can be skipped only when no sample is padded,
+        # otherwise padding is attended to and outputs depend on the rest of the batch.
+        if not self.training and bool(new_mask.all()):
+            return None
+        return new_mask
 
     def add_register_tokens_and_masks(
         self,
@@ -2672,6 +2678,10 @@ class Encoder(FlexiVitBase):
                 location_query_patch_size,
             )
 
+        if fast_pass and not self.use_flash_attn:
+            # The fast pass attends to every token, so it is only correct when every
+            # token is visible to the encoder (no missing or masked data).
+            fast_pass = bool((mask == MaskValue.ONLINE_ENCODER.value).all())
         tokens, indices, new_mask, seq_lengths, max_seqlen, bool_mask = (
             self._maybe_remove_masked_tokens(tokens, mask, fast_pass)
         )
@@ -2832,6 +2842,7 @@ class Encoder(FlexiVitBase):
             raise ValueError("token_exit_cfg cannot be set when fast_pass is True")
 
         x = self.drop_unencodable_modalities(x)
+        x = handle_missing_bands(x, self)
         patchified_tokens_and_masks = self.patch_embeddings.forward(x, patch_size)
         location_token_output: dict[str, Any] | None = None
         token_norm_stats: dict[str, Any] | None = None

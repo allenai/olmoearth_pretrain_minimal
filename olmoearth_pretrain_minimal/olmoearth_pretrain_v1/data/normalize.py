@@ -7,6 +7,7 @@ from importlib.resources import files
 import numpy as np
 
 from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.constants import (
+    MISSING_VALUE,
     ModalitySpec,
 )
 
@@ -68,7 +69,9 @@ class Normalizer:
             modality: The ModalitySpec that defines the modality and band order.
             data: The data to normalize. Shape should be (..., bands) where the last
                 dimension corresponds to bands in the order specified by
-                `modality.band_order`.
+                `modality.band_order`. Missing values can be NaN or
+                ``MISSING_VALUE``; both are returned as NaN, which the encoder
+                handles (see ``data.missing_bands``).
 
         Returns:
             The normalized data with the same shape as input. Values are normalized
@@ -76,7 +79,7 @@ class Normalizer:
 
         Raises:
             ValueError: If a band in the modality's band_order is not found in the
-                normalization config.
+                normalization config, or the data has the wrong number of bands.
         """
         # Get the band order for this modality
         modality_bands = modality.band_order
@@ -99,5 +102,13 @@ class Normalizer:
         min_vals = np.array(mean_vals) - self.std_multiplier * np.array(std_vals)
         max_vals = np.array(mean_vals) + self.std_multiplier * np.array(std_vals)
 
-        # Normalize: (data - min) / (max - min)
-        return (data - min_vals) / (max_vals - min_vals)  # type: ignore
+        if data.shape[-1] != len(modality_bands):
+            raise ValueError(
+                f"{modality.name} data has {data.shape[-1]} bands; expected "
+                f"{len(modality_bands)}, in the order {modality_bands}. Pass missing "
+                "bands as NaN in their place."
+            )
+
+        # Normalize: (data - min) / (max - min). Missing values stay missing (NaN).
+        normalized = (data - min_vals) / (max_vals - min_vals)
+        return np.where(data == MISSING_VALUE, np.nan, normalized)  # type: ignore
