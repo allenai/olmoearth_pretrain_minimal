@@ -2,6 +2,7 @@
 
 import logging
 import math
+import warnings
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any, NamedTuple
@@ -2642,6 +2643,15 @@ class Encoder(FlexiVitBase):
 
         tokens_dict.update(original_masks_dict)
         tokens, mask = self.collapse_and_combine_hwtc(tokens_dict)
+
+        if searchlight is not None and positions is None:
+            # Searchlight's neighborhoods follow RoPE positions; absolute encodings have none.
+            warnings.warn(
+                f"Searchlight needs a RoPE position encoding, not {self.position_encoding!r}; "
+                "running the standard forward",
+                stacklevel=2,
+            )
+            searchlight = None
 
         if searchlight is not None:
             from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.nn.searchlight import (
