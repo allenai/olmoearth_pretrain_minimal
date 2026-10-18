@@ -2,7 +2,6 @@
 
 import logging
 import math
-import warnings
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any, NamedTuple
@@ -2294,6 +2293,7 @@ class Encoder(FlexiVitBase):
         # before encoding. None (the default) disables filtering.
         self.encoder_input_modality_names: list[str] | None = None
         self._warned_dropped_modalities: set[tuple[str, ...]] = set()
+        self._warned_searchlight_without_rope = False
 
     def restrict_input_modalities(self, modality_names: list[str]) -> None:
         """Restrict the encoder to only ingest the given modalities.
@@ -2646,11 +2646,12 @@ class Encoder(FlexiVitBase):
 
         if searchlight is not None and positions is None:
             # Searchlight's neighborhoods follow RoPE positions; absolute encodings have none.
-            warnings.warn(
-                f"Searchlight needs a RoPE position encoding, not {self.position_encoding!r}; "
-                "running the standard forward",
-                stacklevel=2,
-            )
+            if not self._warned_searchlight_without_rope:
+                self._warned_searchlight_without_rope = True
+                logger.warning(
+                    f"Searchlight needs a RoPE position encoding, not {self.position_encoding!r}; "
+                    "running the standard forward"
+                )
             searchlight = None
 
         if searchlight is not None:
