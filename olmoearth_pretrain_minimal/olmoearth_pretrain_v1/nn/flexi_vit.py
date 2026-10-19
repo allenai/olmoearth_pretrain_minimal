@@ -2293,6 +2293,7 @@ class Encoder(FlexiVitBase):
         # before encoding. None (the default) disables filtering.
         self.encoder_input_modality_names: list[str] | None = None
         self._warned_dropped_modalities: set[tuple[str, ...]] = set()
+        self._warned_searchlight_without_rope = False
 
     def restrict_input_modalities(self, modality_names: list[str]) -> None:
         """Restrict the encoder to only ingest the given modalities.
@@ -2642,6 +2643,16 @@ class Encoder(FlexiVitBase):
 
         tokens_dict.update(original_masks_dict)
         tokens, mask = self.collapse_and_combine_hwtc(tokens_dict)
+
+        if searchlight is not None and positions is None:
+            # Searchlight's neighborhoods follow RoPE positions; absolute encodings have none.
+            if not self._warned_searchlight_without_rope:
+                self._warned_searchlight_without_rope = True
+                logger.warning(
+                    f"Searchlight needs a RoPE position encoding, not {self.position_encoding!r}; "
+                    "running the standard forward"
+                )
+            searchlight = None
 
         if searchlight is not None:
             from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.nn.searchlight import (
