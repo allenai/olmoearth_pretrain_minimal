@@ -215,32 +215,33 @@ print(Modality.SRTM.band_order)
 
 Keep every band in its place in the band order and mark missing values as NaN (or
 `MISSING_VALUE` from `utils.constants`, which `Normalizer` turns into NaN). The
-encoder handles them on every forward pass:
+encoder embeds each band set of a modality as one token and handles missing bands on
+every forward pass:
 
-- **v1.1 and v1.2** were trained with band dropout, so missing bands are set to 0
-  after normalization, which is what the model saw for dropped bands.
-- **v1** was not, so each missing band is copied from the present band nearest to
-  it in wavelength at the same pixel and timestep (e.g. B01 from B02, B09 from B8A),
-  as the olmoearth_pretrain evals do: the raw value is copied and normalized with
-  the missing band's own statistics. This applies to Sentinel-2 and Landsat, with
-  thermal bands only copied from thermal bands.
-- A pixel and timestep with no bands at all, or (v1.1, v1.2) a band set with all its
-  bands missing, is masked so the encoder does not attend to it.
-- A `UserWarning` is raised when the input is out of distribution for the model:
-  more than 20% of a modality's bands copied (v1) or of a band set zeroed
-  (v1.1, v1.2) at a pixel and timestep, or a band that cannot be filled, such as a
-  missing Sentinel-1 band. Sentinel-2 without B01 and B09 does not warn; Sentinel-2
-  with only RGB and NIR does.
+- A band set with all its bands missing is masked so the encoder does not attend to
+  it.
+- A partially missing band set raises a `UserWarning`. **v1.1 and v1.2** were trained
+  with band dropout, so the missing bands are set to 0 after normalization, which is
+  what the model saw for dropped bands. **v1** was not, so the whole band set is
+  treated as missing.
 
-Data with the wrong number of bands raises an error rather than being misread. To
-name bands that are missing everywhere instead of writing NaN, or to see what the
-encoder will receive, use `fill_missing_bands`:
+For v1, fill missing bands in the normalizer instead:
 
 ```python
-from olmoearth_pretrain_minimal import fill_missing_bands
-
-sample = fill_missing_bands(sample, {"sentinel2_l2a": ["B01", "B09"]}, model)
+normalized = Normalizer(std_multiplier=2.0).normalize(
+    Modality.SENTINEL2_L2A, data, fill_missing_bands=True
+)
 ```
+
+Each missing value is copied from the present band nearest to it in wavelength at the
+same pixel and timestep (e.g. B01 from B02, B09 from B8A) before normalizing, as the
+olmoearth_pretrain evals do. This applies to Sentinel-2 and Landsat, with thermal
+bands only copied from thermal bands; values that cannot be filled stay NaN. A
+`UserWarning` is raised when more than 20% of a modality's bands are copied at a pixel
+and timestep: Sentinel-2 without B01 and B09 does not warn; Sentinel-2 with only RGB
+and NIR does.
+
+Data with the wrong number of bands raises an error rather than being misread.
 
 ### Note
 

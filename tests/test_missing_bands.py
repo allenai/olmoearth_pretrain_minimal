@@ -8,7 +8,6 @@ import pytest
 import torch
 
 from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.data.missing_bands import (
-    fill_missing_bands,
     handle_missing_bands,
 )
 from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.data.normalize import Normalizer
@@ -113,8 +112,7 @@ def _mask(sample: MaskedOlmoEarthSample) -> torch.Tensor:
 
 def test_v1_2_zero_fills_partial_band_set() -> None:
     sample = _with_nan(_sample(), S2, ["B01", "B09"])
-    with warnings.catch_warnings():
-        warnings.simplefilter("error")
+    with pytest.warns(UserWarning, match="set to 0"):
         out = handle_missing_bands(sample, _encoder(v1=False))
     assert (_band(out, S2, "B01") == 0).all() and (_band(out, S2, "B09") == 0).all()
     assert torch.equal(_band(out, S2, "B02"), _band(sample, S2, "B02"))
@@ -122,110 +120,43 @@ def test_v1_2_zero_fills_partial_band_set() -> None:
     assert (_mask(out) == VISIBLE).all()
 
 
-def test_v1_2_warns_beyond_band_dropout_rate() -> None:
-    sample = _with_nan(_sample(), S2, ["B05", "B06", "B07"])  # 3 / 12 > 0.2
-    with pytest.warns(UserWarning, match="Up to 3 of the 12"):
-        handle_missing_bands(sample, _encoder(v1=False))
-
-
-def test_v1_2_warns_for_modality_without_band_dropout() -> None:
-    sample = _with_nan(_sample(S1), S1, ["vh"])
-    with pytest.warns(UserWarning, match="band dropout rate 0.0"):
-        out = handle_missing_bands(sample, _encoder(v1=False))
-    assert (_band(out, S1, "vh") == 0).all()
-
-
 def test_v1_2_zero_fills_single_timestep() -> None:
     sample = _with_nan(_sample(), S2, ["B01"], t=1)
-    out = handle_missing_bands(sample, _encoder(v1=False))
+    with pytest.warns(UserWarning):
+        out = handle_missing_bands(sample, _encoder(v1=False))
     assert (_band(out, S2, "B01")[..., 1] == 0).all()
-
-
-# v1: each missing band is copied from the nearest present band in wavelength.
-
-
-def _raw_s2(batch: int = B) -> np.ndarray:
-    rng = np.random.default_rng(0)
-    return rng.uniform(100, 5000, (batch, H, W, T, S2.num_bands)).astype(np.float32)
-
-
-def _normalized(raw: np.ndarray) -> MaskedOlmoEarthSample:
-    data = Normalizer(std_multiplier=2.0).normalize(S2, raw)
-    return MaskedOlmoEarthSample(
-        timestamps=_timestamps(raw.shape[0]),
-        sentinel2_l2a=torch.as_tensor(data, dtype=torch.float32),
-    )
-
-
-def test_v1_copies_bands_like_olmoearth_pretrain_evals() -> None:
-    # olmoearth_pretrain's PASTIS eval fills B01 from B02 and B09 from B8A in raw
-    # units, then normalizes with the pretraining stats.
-    raw = _raw_s2()
-    imputed = raw.copy()
-    order = S2.band_order
-    imputed[..., order.index("B01")] = raw[..., order.index("B02")]
-    imputed[..., order.index("B09")] = raw[..., order.index("B8A")]
-    expected = _normalized(imputed)
-
-    sample = _with_nan(_normalized(raw), S2, ["B01", "B09"])
-    with warnings.catch_warnings():
-        warnings.simplefilter("error")
-        out = handle_missing_bands(sample, _encoder(v1=True))
-    # B01 and B09 form a whole band set in v1; it is filled, not masked.
-    assert torch.allclose(_data(out), _data(expected), atol=1e-5)
     assert (_mask(out) == VISIBLE).all()
 
 
-def test_v1_copies_from_the_same_timestep_only() -> None:
-    raw = _raw_s2()
-    imputed = raw.copy()
-    order = S2.band_order
-    imputed[..., 1, order.index("B01")] = raw[..., 1, order.index("B02")]
-    sample = _with_nan(_normalized(raw), S2, ["B01"], t=1)
-    out = handle_missing_bands(sample, _encoder(v1=True))
-    assert torch.allclose(_data(out), _data(_normalized(imputed)), atol=1e-5)
+# v1: partially missing band sets are treated as fully missing.
 
 
-def test_v1_copies_the_nearest_present_band() -> None:
-    # B05 (705 nm) is nearest B06 (740 nm); with B06 also missing, B04 (665 nm).
-    raw = _raw_s2()
-    order = S2.band_order
-    sample = _with_nan(_normalized(raw), S2, ["B05", "B06"])
-    out = handle_missing_bands(sample, _encoder(v1=True))
-    imputed = raw.copy()
-    imputed[..., order.index("B05")] = raw[..., order.index("B04")]
-    imputed[..., order.index("B06")] = raw[..., order.index("B07")]
-    assert torch.allclose(_data(out), _data(_normalized(imputed)), atol=1e-5)
-
-
-@pytest.mark.parametrize("v1", [True, False], ids=["v1", "v1.2"])
-def test_rgb_nir_only_warns(v1: bool) -> None:
-    rgbn = {"B02", "B03", "B04", "B08"}
-    sample = _with_nan(_sample(), S2, [b for b in S2.band_order if b not in rgbn])
-    with pytest.warns(UserWarning, match="Up to 8 of the 12"):
-        out = handle_missing_bands(sample, _encoder(v1))
-    assert torch.isfinite(_data(out)).all()
-
-
-def test_v1_warns_when_many_bands_copied() -> None:
-    sample = _with_nan(_sample(), S2, ["B05", "B06", "B07"], t=1)
-    with pytest.warns(UserWarning, match="Up to 3 of the 12 sentinel2_l2a bands were"):
-        handle_missing_bands(sample, _encoder(v1=True))
-
-
-def test_v1_does_not_copy_thermal_from_reflective_bands() -> None:
-    sample = _with_nan(_sample(LANDSAT), LANDSAT, ["B10", "B11"])
-    with pytest.warns(UserWarning, match="could not be copied"):
+def test_v1_masks_partial_band_set() -> None:
+    sample = _with_nan(_sample(), S2, ["B05"])
+    with pytest.warns(UserWarning, match="treated as fully missing"):
         out = handle_missing_bands(sample, _encoder(v1=True))
-    assert (_band(out, LANDSAT, "B10") == 0).all()
-    assert (_band(out, LANDSAT, "B11") == 0).all()
+    band_sets = _encoder(v1=True).tokenization_config.get_bandset_indices(S2.name)
+    index = next(
+        i
+        for i, band_set in enumerate(band_sets)
+        if S2.band_order.index("B05") in band_set
+    )
+    for i, band_set in enumerate(band_sets):
+        expected = MISSING if i == index else VISIBLE
+        assert (_mask(out)[..., i] == expected).all()
+        if i == index:
+            assert (_data(out)[..., band_set] == 0).all()
+        else:
+            assert torch.equal(_data(out)[..., band_set], _data(sample)[..., band_set])
 
 
-def test_v1_warns_when_nothing_to_copy_from() -> None:
-    sample = _with_nan(_sample(S1), S1, ["vh"])
-    with pytest.warns(UserWarning, match="could not be copied"):
+def test_v1_whole_band_set_missing_does_not_warn() -> None:
+    sample = _with_nan(_sample(), S2, ["B01", "B09"])
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
         out = handle_missing_bands(sample, _encoder(v1=True))
-    assert (_band(out, S1, "vh") == 0).all()
+    assert (_mask(out)[..., 2] == MISSING).all()
+    assert (_mask(out)[..., :2] == VISIBLE).all()
 
 
 # Both versions.
@@ -247,11 +178,14 @@ def test_per_band_mask_marks_bands_missing(v1: bool) -> None:
     mask = torch.zeros(B, H, W, T, S2.num_bands, dtype=torch.long)
     mask[..., S2.band_order.index("B01")] = MISSING
     sample = _sample(mask=mask)
-    out = handle_missing_bands(sample, _encoder(v1))
+    with pytest.warns(UserWarning):
+        out = handle_missing_bands(sample, _encoder(v1))
     assert _mask(out).shape == (B, H, W, T, 3 if v1 else 1)
-    assert (_mask(out) == VISIBLE).all()
     by_nan = _with_nan(sample._replace(sentinel2_l2a_mask=None), S2, ["B01"])
-    assert torch.equal(_data(out), _data(handle_missing_bands(by_nan, _encoder(v1))))
+    with pytest.warns(UserWarning):
+        expected = handle_missing_bands(by_nan, _encoder(v1))
+    assert torch.equal(_data(out), _data(expected))
+    assert torch.equal(_mask(out), _mask(expected))
 
 
 @pytest.mark.parametrize(
@@ -285,41 +219,9 @@ def test_wrong_number_of_bands() -> None:
 def test_input_not_modified() -> None:
     sample = _with_nan(_sample(), S2, ["B01"])
     nan = _data(sample).isnan().clone()
-    handle_missing_bands(sample, _encoder(v1=True))
+    with pytest.warns(UserWarning):
+        handle_missing_bands(sample, _encoder(v1=True))
     assert torch.equal(_data(sample).isnan(), nan)
-
-
-# fill_missing_bands
-
-
-@pytest.mark.parametrize("v1", [True, False], ids=["v1", "v1.2"])
-def test_fill_missing_bands_matches_nan(v1: bool) -> None:
-    encoder = _encoder(v1)
-    sample = _sample()
-    by_name = fill_missing_bands(sample, {S2.name: ["B01", "B09"]}, encoder)
-    by_nan = handle_missing_bands(_with_nan(sample, S2, ["B01", "B09"]), encoder)
-    assert torch.equal(_data(by_name), _data(by_nan))
-    assert torch.equal(_mask(by_name), _mask(by_nan))
-
-
-def test_fill_missing_bands_accepts_model_with_encoder() -> None:
-    class Wrapper(torch.nn.Module):
-        def __init__(self) -> None:
-            super().__init__()
-            self.encoder = _encoder(v1=False)
-
-    out = fill_missing_bands(_sample(), {S2.name: ["B01"]}, Wrapper())
-    assert (_band(out, S2, "B01") == 0).all()
-
-
-def test_fill_missing_bands_errors() -> None:
-    encoder = _encoder(v1=True)
-    with pytest.raises(ValueError, match="Unknown band"):
-        fill_missing_bands(_sample(), {S2.name: ["B13"]}, encoder)
-    with pytest.raises(ValueError, match="not present in the sample"):
-        fill_missing_bands(_sample(), {LANDSAT.name: ["B1"]}, encoder)
-    with pytest.raises(TypeError, match="Expected an Encoder"):
-        fill_missing_bands(_sample(), {S2.name: ["B01"]}, torch.nn.Linear(1, 1))
 
 
 # Encoder forward
@@ -365,6 +267,34 @@ def test_fast_pass_respects_missing_tokens() -> None:
 # Normalizer
 
 
+def _raw_s2() -> np.ndarray:
+    rng = np.random.default_rng(0)
+    return rng.uniform(100, 5000, (B, H, W, T, S2.num_bands)).astype(np.float32)
+
+
+def _set(
+    raw: np.ndarray,
+    modality: ModalitySpec,
+    bands: list[str],
+    value: Any,
+    t: int | slice = slice(None),
+) -> np.ndarray:
+    raw = raw.copy()
+    for band in bands:
+        raw[..., t, modality.band_order.index(band)] = value
+    return raw
+
+
+def _copy(
+    raw: np.ndarray, pairs: dict[str, str], t: int | slice = slice(None)
+) -> np.ndarray:
+    raw = raw.copy()
+    order = S2.band_order
+    for target, source in pairs.items():
+        raw[..., t, order.index(target)] = raw[..., t, order.index(source)]
+    return raw
+
+
 def test_normalizer_keeps_missing_values_missing() -> None:
     data = np.random.rand(1, 4, 4, 2, S2.num_bands).astype(np.float32) * 1000
     data[..., 0] = MISSING_VALUE
@@ -377,3 +307,69 @@ def test_normalizer_keeps_missing_values_missing() -> None:
 def test_normalizer_wrong_number_of_bands() -> None:
     with pytest.raises(ValueError, match="has 10 bands"):
         Normalizer(std_multiplier=2.0).normalize(S2, np.zeros((1, 10)))
+
+
+@pytest.mark.parametrize("value", [np.nan, MISSING_VALUE], ids=["nan", "missing-value"])
+def test_fill_copies_bands_like_olmoearth_pretrain_evals(value: float) -> None:
+    raw = _raw_s2()
+    normalizer = Normalizer(std_multiplier=2.0)
+    expected = normalizer.normalize(S2, _copy(raw, {"B01": "B02", "B09": "B8A"}))
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        out = normalizer.normalize(
+            S2, _set(raw, S2, ["B01", "B09"], value), fill_missing_bands=True
+        )
+    np.testing.assert_allclose(out, expected, rtol=1e-6)
+
+
+def test_fill_copies_from_the_same_timestep_only() -> None:
+    raw = _raw_s2()
+    normalizer = Normalizer(std_multiplier=2.0)
+    expected = normalizer.normalize(S2, _copy(raw, {"B01": "B02"}, t=1))
+    out = normalizer.normalize(
+        S2, _set(raw, S2, ["B01"], np.nan, t=1), fill_missing_bands=True
+    )
+    np.testing.assert_allclose(out, expected, rtol=1e-6)
+
+
+def test_fill_copies_the_nearest_present_band() -> None:
+    # B05 (705 nm) is nearest B06 (740 nm); with B06 also missing, B04 (665 nm).
+    raw = _raw_s2()
+    normalizer = Normalizer(std_multiplier=2.0)
+    expected = normalizer.normalize(S2, _copy(raw, {"B05": "B04", "B06": "B07"}))
+    out = normalizer.normalize(
+        S2, _set(raw, S2, ["B05", "B06"], np.nan), fill_missing_bands=True
+    )
+    np.testing.assert_allclose(out, expected, rtol=1e-6)
+
+
+def test_fill_warns_when_many_bands_copied() -> None:
+    rgbn = {"B02", "B03", "B04", "B08"}
+    raw = _set(_raw_s2(), S2, [b for b in S2.band_order if b not in rgbn], np.nan)
+    with pytest.warns(UserWarning, match="Up to 8 of the 12"):
+        out = Normalizer(std_multiplier=2.0).normalize(S2, raw, fill_missing_bands=True)
+    assert np.isfinite(out).all()
+
+
+def test_fill_does_not_copy_thermal_from_reflective_bands() -> None:
+    raw = np.random.default_rng(0).uniform(100, 5000, (B, H, W, T, LANDSAT.num_bands))
+    raw = _set(raw, LANDSAT, ["B10", "B11"], np.nan)
+    out = Normalizer(std_multiplier=2.0).normalize(
+        LANDSAT, raw, fill_missing_bands=True
+    )
+    for band in ["B10", "B11"]:
+        assert np.isnan(out[..., LANDSAT.band_order.index(band)]).all()
+
+
+def test_fill_leaves_modalities_without_spectral_groups_missing() -> None:
+    raw = np.random.default_rng(0).uniform(0, 1, (B, H, W, T, S1.num_bands))
+    raw = _set(raw, S1, ["vh"], np.nan)
+    out = Normalizer(std_multiplier=2.0).normalize(S1, raw, fill_missing_bands=True)
+    assert np.isnan(out[..., S1.band_order.index("vh")]).all()
+
+
+def test_fill_whole_timestep_stays_missing() -> None:
+    raw = _set(_raw_s2(), S2, S2.band_order, np.nan, t=1)
+    out = Normalizer(std_multiplier=2.0).normalize(S2, raw, fill_missing_bands=True)
+    assert np.isnan(out[..., 1, :]).all()
+    assert np.isfinite(out[..., [0, 2], :]).all()

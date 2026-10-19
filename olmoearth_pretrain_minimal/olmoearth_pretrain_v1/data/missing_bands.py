@@ -1,40 +1,32 @@
 """Handle inputs whose modalities are missing some bands.
 
 Missing values are marked with NaN in the data (``Normalizer`` keeps NaN and turns
-``MISSING_VALUE`` into NaN), with ``MaskValue.MISSING`` in a per-band mask, or by
-passing band names to :func:`fill_missing_bands`. The encoder calls
-:func:`handle_missing_bands` on every input, so NaN and per-band masks are handled
-without any extra step.
+``MISSING_VALUE`` into NaN) or with ``MaskValue.MISSING`` in a per-band mask.
 
-The encoder embeds each band set of a modality as one token, so missing data can be
-excluded from attention only a whole band set at a time. How the rest is handled
-depends on how the model was trained:
+``Normalizer.normalize(..., fill_missing_bands=True)`` fills each missing band from
+the present band nearest to it in wavelength (:func:`copy_nearest_bands`), as
+olmoearth_pretrain's evals do. This is recommended for v1, which was not trained with
+band dropout.
 
-* Models trained with band dropout (v1.1 onward) saw dropped bands as 0 in normalized
-  space. Missing bands are set to 0 and band sets with every band missing are masked.
-* Models trained without band dropout (v1) never saw zeroed bands. Each missing band
-  is copied from the present band nearest to it in wavelength, as olmoearth_pretrain's
-  evals do.
+The encoder calls :func:`handle_missing_bands` on every input. The encoder embeds each
+band set of a modality as one token, so missing data can be excluded from attention
+only a whole band set at a time:
 
-In both cases a pixel and timestep with no band at all is masked. A warning is
-raised when more than ``MAX_COPIED_FRACTION`` of a modality's bands are copied at a
-pixel and timestep, or when more of a band set is set to 0 than the model was trained
-with.
+* A band set with every band missing is masked.
+* A partially missing band set raises a warning. Models trained with band dropout
+  (v1.1 onward) saw dropped bands as 0 in normalized space, so the missing bands are
+  set to 0. Models trained without band dropout (v1) never saw zeroed bands, so the
+  whole band set is treated as missing.
 """
 
 from __future__ import annotations
 
-import functools
 import warnings
-from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING
 
+import numpy as np
 import torch
-from torch import nn
 
-from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.data.normalize import (
-    load_computed_config,
-)
 from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.constants import Modality
 from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.datatypes import (
     MaskedOlmoEarthSample,
@@ -47,9 +39,6 @@ if TYPE_CHECKING:
 # Warn when more than this fraction of a modality's bands are copied from other bands
 # at a pixel and timestep. Matches the band dropout rate of v1.1 and v1.2.
 MAX_COPIED_FRACTION = 0.2
-
-# All released models were pretrained on data normalized with this multiplier.
-TRAINING_STD_MULTIPLIER = 2.0
 
 SPECTRAL_GROUPS: dict[str, list[dict[str, float]]] = {
     Modality.SENTINEL2_L2A.name: [
@@ -85,19 +74,46 @@ SPECTRAL_GROUPS: dict[str, list[dict[str, float]]] = {
 }
 
 
-def _get_encoder(model: nn.Module) -> Encoder:
-    """Return the encoder of a model, or the model itself if it is an encoder."""
-    from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.nn.flexi_vit import Encoder
+def copy_nearest_bands(
+    modality: str, data: np.ndarray, missing: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """Fill each missing band with the present band nearest to it in wavelength.
 
-    if isinstance(model, Encoder):
-        return model
-    encoder = getattr(model, "encoder", None)
-    if isinstance(encoder, Encoder):
-        return encoder
-    raise TypeError(
-        f"Expected an Encoder or a model with an Encoder at `.encoder`, got "
-        f"{type(model).__name__}."
-    )
+    This is how olmoearth_pretrain's evals fill bands a dataset lacks (B01 from B02,
+    B09 from B8A, B10 from B11), applied to raw (unnormalized) values at the same
+    pixel and timestep. Ties go to the shorter wavelength. Bands are only copied
+    within a group of ``SPECTRAL_GROUPS``.
+
+    Returns:
+        The filled data and the mask of values that are still missing.
+    """
+    groups = SPECTRAL_GROUPS.get(modality)
+    if not groups:
+        return data, missing
+    band_order = Modality.get(modality).band_order
+    filled, still_missing = data.copy(), missing.copy()
+    for group in groups:
+        for target, wavelength in group.items():
+            sources = sorted(
+                (band for band in group if band != target),
+                key=lambda band: (abs(group[band] - wavelength), group[band]),
+            )
+            t = band_order.index(target)
+            for source in sources:
+                s = band_order.index(source)
+                copy = still_missing[..., t] & ~missing[..., s]
+                filled[..., t] = np.where(copy, data[..., s], filled[..., t])
+                still_missing[..., t] &= ~copy
+    worst = int((missing & ~still_missing).sum(axis=-1).max(initial=0))
+    if worst / len(band_order) > MAX_COPIED_FRACTION:
+        warnings.warn(
+            f"Up to {worst} of the {len(band_order)} {modality} bands were copied "
+            "from other bands at the same pixel and timestep, so model outputs may "
+            "degrade.",
+            UserWarning,
+            stacklevel=3,
+        )
+    return filled, still_missing
 
 
 def _split_mask(
@@ -140,65 +156,10 @@ def _split_mask(
     )
 
 
-@functools.cache
-def _band_ranges(modality: str) -> tuple[tuple[float, ...], tuple[float, ...]]:
-    """Lower bound and width of each band's normalization range, in band order."""
-    stats = load_computed_config()[modality]
-    bands = Modality.get(modality).band_order
-    k = TRAINING_STD_MULTIPLIER
-    low = tuple(stats[band]["mean"] - k * stats[band]["std"] for band in bands)
-    width = tuple(2 * k * stats[band]["std"] for band in bands)
-    return low, width
-
-
-def _copy_nearest_bands(
-    data: torch.Tensor, missing: torch.Tensor, modality: str
-) -> tuple[torch.Tensor, torch.Tensor]:
-    """Fill each missing band with the present band nearest to it in wavelength.
-
-    This is how olmoearth_pretrain's evals fill bands a dataset lacks (B01 from B02,
-    B09 from B8A, B10 from B11): the source band's raw value is copied and then
-    normalized with the missing band's own statistics. Ties go to the shorter
-    wavelength. Bands are only copied within a group of ``SPECTRAL_GROUPS``.
-    """
-    groups = SPECTRAL_GROUPS.get(modality)
-    if not groups:
-        return data, missing
-    band_order = Modality.get(modality).band_order
-    low_list, width_list = _band_ranges(modality)
-    low = torch.tensor(low_list, dtype=data.dtype, device=data.device)
-    width = torch.tensor(width_list, dtype=data.dtype, device=data.device)
-    raw = data * width + low
-    filled, still_missing = data.clone(), missing.clone()
-    for group in groups:
-        for target, wavelength in group.items():
-            sources = sorted(
-                (band for band in group if band != target),
-                key=lambda band: (abs(group[band] - wavelength), group[band]),
-            )
-            t = band_order.index(target)
-            value = torch.zeros_like(data[..., t])
-            found = torch.zeros_like(missing[..., t])
-            # Nearest last, so it overwrites any farther band that is present.
-            for source in reversed(sources):
-                s = band_order.index(source)
-                present = ~missing[..., s]
-                value = torch.where(present, raw[..., s], value)
-                found = found | present
-            copy = missing[..., t] & found
-            filled[..., t] = torch.where(
-                copy, (value - low[t]) / width[t], data[..., t]
-            )
-            still_missing[..., t] = missing[..., t] & ~found
-    return filled, still_missing
-
-
 def handle_missing_bands(
-    sample: MaskedOlmoEarthSample,
-    encoder: Encoder,
-    missing_bands: Mapping[str, Sequence[str]] | None = None,
+    sample: MaskedOlmoEarthSample, encoder: Encoder
 ) -> MaskedOlmoEarthSample:
-    """Fill missing bands and mask what cannot be filled; see the module docstring.
+    """Zero missing bands and mask missing band sets; see the module docstring.
 
     Also checks that each modality has the expected number of bands and a mask of a
     supported shape, and converts masks to one entry per band set. Samples with no
@@ -207,24 +168,15 @@ def handle_missing_bands(
     Args:
         sample: Sample whose data has already been normalized.
         encoder: The encoder the sample is for.
-        missing_bands: Optional modality name to names of bands missing everywhere,
-            in addition to those marked with NaN or a per-band mask.
 
     Returns:
         A new sample; the input sample is not modified.
 
     Raises:
-        ValueError: If a modality has the wrong number of bands, a band name is not
-            part of its modality, a modality in ``missing_bands`` is not in the
-            sample, or a mask has an unexpected shape.
+        ValueError: If a modality has the wrong number of bands or a mask has an
+            unexpected shape.
     """
-    missing_bands = missing_bands or {}
-    for modality in missing_bands:
-        if missing_bands[modality] and getattr(sample, modality, None) is None:
-            raise ValueError(f"Modality {modality!r} is not present in the sample.")
-
-    tokenization = encoder.tokenization_config
-    copy_bands = encoder.band_dropout_rate == 0
+    zero_partial_band_sets = encoder.band_dropout_rate > 0
     updates: dict[str, torch.Tensor] = {}
     for modality in sample.modalities:
         if modality not in encoder.patch_embeddings.supported_modality_names:
@@ -238,7 +190,7 @@ def handle_missing_bands(
                 f"{spec.band_order}. Pass missing bands as NaN in their place."
             )
         mask_name = sample.get_masked_modality_name(modality)
-        band_sets = tokenization.get_bandset_indices(modality)
+        band_sets = encoder.tokenization_config.get_bandset_indices(modality)
         input_mask = getattr(sample, mask_name)
         mask, missing = _split_mask(data, input_mask, band_sets, modality)
         if mask is not input_mask:
@@ -246,88 +198,39 @@ def handle_missing_bands(
 
         nan = data.isnan()
         missing = nan if missing is None else missing | nan
-        bands = missing_bands.get(modality, [])
-        if bands:
-            unknown = sorted(set(bands) - set(spec.band_order))
-            if unknown:
-                raise ValueError(
-                    f"Unknown band(s) {unknown} for {modality!r}; "
-                    f"valid bands: {spec.band_order}."
-                )
-            missing = missing.clone()
-            missing[..., [spec.band_order.index(band) for band in bands]] = True
         if not missing.any():
             continue
 
-        if copy_bands:
-            before = missing
-            data, missing = _copy_nearest_bands(data, missing, modality)
-            worst = int((before & ~missing).sum(dim=-1).max())
-            if worst / spec.num_bands > MAX_COPIED_FRACTION:
-                warnings.warn(
-                    f"Up to {worst} of the {spec.num_bands} {modality} bands were "
-                    "copied from other bands at the same pixel and timestep. The model "
-                    "was not trained with missing bands, so its outputs may degrade.",
-                    UserWarning,
-                    stacklevel=3,
-                )
-        data = data.masked_fill(missing, 0)
-        updates[modality] = data
-
-        trained_with_dropout = not copy_bands and (
-            encoder.band_dropout_modalities is None
-            or modality in encoder.band_dropout_modalities
-        )
-        allowed = encoder.band_dropout_rate if trained_with_dropout else 0.0
         mask = mask.clone()
+        partial_band_sets = []
         for index, band_set in enumerate(band_sets):
             num_missing = missing[..., band_set].sum(dim=-1)
+            set_missing = num_missing == len(band_set)
+            partial = (num_missing > 0) & ~set_missing
+            if partial.any():
+                partial_band_sets.append([spec.band_order[i] for i in band_set])
+                if not zero_partial_band_sets:
+                    set_missing = set_missing | partial
+                    missing[..., band_set] |= partial.unsqueeze(-1)
             mask[..., index] = mask[..., index].masked_fill(
-                num_missing == len(band_set), MaskValue.MISSING.value
+                set_missing, MaskValue.MISSING.value
             )
-            partial = (num_missing > 0) & (num_missing < len(band_set))
-            worst = int(num_missing[partial].max()) if partial.any() else 0
-            if worst / len(band_set) > allowed:
-                names = [spec.band_order[i] for i in band_set]
-                how = "could not be copied and were" if copy_bands else "were"
-                warnings.warn(
-                    f"Up to {worst} of the {len(band_set)} {modality} bands {names} "
-                    f"{how} set to 0 in the same token. The model was not trained "
-                    f"with that much of a token dropped (band dropout rate "
-                    f"{allowed}), so its outputs for these tokens may degrade.",
-                    UserWarning,
-                    stacklevel=3,
+        if partial_band_sets:
+            if zero_partial_band_sets:
+                action = "their missing bands were set to 0"
+            else:
+                action = (
+                    "the model was not trained with band dropout, so these band sets "
+                    "were treated as fully missing. Pass fill_missing_bands=True to "
+                    "Normalizer.normalize to fill missing bands from other bands"
                 )
+            warnings.warn(
+                f"{modality} band sets {partial_band_sets} are partially missing at "
+                f"some pixels and timesteps; {action}.",
+                UserWarning,
+                stacklevel=3,
+            )
+        updates[modality] = data.masked_fill(missing, 0)
         updates[mask_name] = mask
 
     return sample._replace(**updates) if updates else sample
-
-
-def fill_missing_bands(
-    sample: MaskedOlmoEarthSample,
-    missing_bands: Mapping[str, Sequence[str]],
-    model: nn.Module,
-) -> MaskedOlmoEarthSample:
-    """Mark bands as missing everywhere in a normalized sample and handle them.
-
-    The encoder already handles bands marked with NaN or a per-band mask; use this to
-    name missing bands instead, or to inspect what the encoder will see.
-
-    Example:
-        >>> sample = fill_missing_bands(
-        ...     sample,  # already normalized, see ``data.normalize.Normalizer``
-        ...     missing_bands={Modality.SENTINEL2_L2A.name: ["B01", "B09"]},
-        ...     model=model,
-        ... )
-
-    Args:
-        sample: Sample whose data has already been normalized.
-        missing_bands: Modality name to names of its missing bands, using the names
-            in ``Modality.<MODALITY>.band_order``.
-        model: The model the sample is for (an ``Encoder``, or a model with one at
-            ``.encoder``).
-
-    Returns:
-        A new sample; the input sample is not modified.
-    """
-    return handle_missing_bands(sample, _get_encoder(model), missing_bands)

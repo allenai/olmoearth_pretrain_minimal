@@ -6,6 +6,9 @@ from importlib.resources import files
 
 import numpy as np
 
+from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.data.missing_bands import (
+    copy_nearest_bands,
+)
 from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.constants import (
     MISSING_VALUE,
     ModalitySpec,
@@ -62,7 +65,12 @@ class Normalizer:
         self.std_multiplier = std_multiplier
         self.norm_config = load_computed_config()
 
-    def normalize(self, modality: ModalitySpec, data: np.ndarray) -> np.ndarray:
+    def normalize(
+        self,
+        modality: ModalitySpec,
+        data: np.ndarray,
+        fill_missing_bands: bool = False,
+    ) -> np.ndarray:
         """Normalize the data using computed mean and standard deviation values.
 
         Args:
@@ -72,6 +80,10 @@ class Normalizer:
                 `modality.band_order`. Missing values can be NaN or
                 ``MISSING_VALUE``; both are returned as NaN, which the encoder
                 handles (see ``data.missing_bands``).
+            fill_missing_bands: Fill each missing value from the present band nearest
+                to it in wavelength at the same pixel and timestep. Recommended for
+                v1, which was not trained with band dropout. Values that cannot be
+                filled are returned as NaN.
 
         Returns:
             The normalized data with the same shape as input. Values are normalized
@@ -109,6 +121,10 @@ class Normalizer:
                 "bands as NaN in their place."
             )
 
+        missing = np.isnan(data) | (data == MISSING_VALUE)
+        if fill_missing_bands and missing.any():
+            data, missing = copy_nearest_bands(modality.name, data, missing)
+
         # Normalize: (data - min) / (max - min). Missing values stay missing (NaN).
         normalized = (data - min_vals) / (max_vals - min_vals)
-        return np.where(data == MISSING_VALUE, np.nan, normalized)  # type: ignore
+        return np.where(missing, np.nan, normalized)  # type: ignore

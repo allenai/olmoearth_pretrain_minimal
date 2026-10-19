@@ -6,9 +6,6 @@ from olmoearth_pretrain_minimal.model_loader import (
     load_model_from_path,
 )
 from olmoearth_pretrain_minimal.olmoearth_pretrain_v1 import OlmoEarthPretrain_v1
-from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.data.missing_bands import (
-    fill_missing_bands,
-)
 from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.data.normalize import Normalizer
 from olmoearth_pretrain_minimal.unet_head import UNetDecoder
 
@@ -19,5 +16,4 @@ __all__ = [
     "load_model_from_path",
     "Normalizer",
     "UNetDecoder",
-    "fill_missing_bands",
 ]
