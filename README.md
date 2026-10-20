@@ -172,6 +172,7 @@ timestamps[:, :, 1] = torch.arange(12, dtype=torch.long)  # months 0-11
 sample = MaskedOlmoEarthSample(
     timestamps=timestamps,
     sentinel2_l2a=torch.from_numpy(normalized_sentinel2).float(),
+    sentinel2_l2a_mask=torch.zeros(1, 128, 128, 12, dtype=torch.long),
 )
 
 with torch.no_grad():
@@ -214,34 +215,35 @@ print(Modality.SRTM.band_order)
 ### Missing Bands
 
 Keep every band in its place in the band order and mark missing values as NaN (or
-`MISSING_VALUE` from `utils.constants`, which `Normalizer` turns into NaN). The
-encoder embeds each band set of a modality as one token and handles missing bands on
-every forward pass:
-
-- A band set with all its bands missing is masked so the encoder does not attend to
-  it.
-- A partially missing band set raises a `UserWarning`. **v1.1 and v1.2** were trained
-  with band dropout, so the missing bands are set to 0 after normalization, which is
-  what the model saw for dropped bands. **v1** was not, so the whole band set is
-  treated as missing.
-
-For v1, fill missing bands in the normalizer instead:
+`MISSING_VALUE` from `utils.constants`). Then tell the normalizer which model the data
+is for, so it fills missing bands the way that model expects:
 
 ```python
-normalized = Normalizer(std_multiplier=2.0).normalize(
-    Modality.SENTINEL2_L2A, data, fill_missing_bands=True
-)
+from olmoearth_pretrain_minimal import NormalizerV1, NormalizerV1_1
+
+normalized = NormalizerV1_1().normalize(Modality.SENTINEL2_L2A, data)  # v1.1 and later
+normalized = NormalizerV1().normalize(Modality.SENTINEL2_L2A, data)    # v1
 ```
 
-Each missing value is copied from the present band nearest to it in wavelength at the
-same pixel and timestep (e.g. B01 from B02, B09 from B8A) before normalizing, as the
-olmoearth_pretrain evals do. This applies to Sentinel-2 and Landsat, with thermal
-bands only copied from thermal bands; values that cannot be filled stay NaN. A
-`UserWarning` is raised when more than 20% of a modality's bands are copied at a pixel
-and timestep: Sentinel-2 without B01 and B09 does not warn; Sentinel-2 with only RGB
-and NIR does.
+`Normalizer(model_type="v1")` and `Normalizer(model_type="v1.1")` are the same.
 
-Data with the wrong number of bands raises an error rather than being misread.
+- **v1.1 and later** were trained with band dropout, so missing bands are set to 0
+  after normalization, which is what the model saw for dropped bands.
+- **v1** was not, so each missing value is copied from the present band nearest to it
+  in wavelength at the same pixel and timestep (e.g. B01 from B02, B09 from B8A) before
+  normalizing, as the olmoearth_pretrain evals do. This applies to Sentinel-2 and
+  Landsat, with thermal bands only copied from thermal bands. Values that cannot be
+  copied are set to 0.
+
+A `UserWarning` is raised when more than 20% of a modality's bands are filled at a
+pixel and timestep (Sentinel-2 without B01 and B09 does not warn; Sentinel-2 with only
+RGB and NIR does), and for v1 whenever values are set to 0.
+
+If a whole band set (or timestep) has no data, either leave it out or mark it
+`MaskValue.MISSING` in the modality's mask so the encoder does not attend to it.
+
+`Normalizer()` without a `model_type` does not fill missing values. Data with the
+wrong number of bands raises an error rather than being misread.
 
 ### Note
 
