@@ -11,6 +11,8 @@ from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.data.normalize import (
     Normalizer,
     NormalizerV1,
     NormalizerV1_1,
+    NormalizerV1_2,
+    NormalizerV1_3,
 )
 from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.nn.flexi_vit import Encoder
 from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.constants import (
@@ -68,7 +70,16 @@ def _band(data: np.ndarray, modality: ModalitySpec, band: str) -> np.ndarray:
 def test_model_type_subclasses() -> None:
     assert NormalizerV1().model_type == "v1"
     assert NormalizerV1_1().model_type == "v1.1"
+    assert isinstance(NormalizerV1_2(), NormalizerV1_1)
+    assert isinstance(NormalizerV1_3(), NormalizerV1_1)
     assert Normalizer().model_type is None
+
+
+@pytest.mark.parametrize("model_type", ["v1.1", "v1.2", "v1.3"])
+def test_later_model_types_zero_missing_bands(model_type: str) -> None:
+    raw = _set(_raw(), S2, ["B01"], np.nan)
+    out = Normalizer(model_type=model_type).normalize(S2, raw)
+    np.testing.assert_array_equal(out, NormalizerV1_1().normalize(S2, raw))
 
 
 def test_unknown_model_type() -> None:
@@ -129,6 +140,17 @@ def test_v1_copies_bands_like_olmoearth_pretrain_evals(value: float) -> None:
         warnings.simplefilter("error")
         out = NormalizerV1().normalize(S2, _set(raw, S2, ["B01", "B09"], value))
     np.testing.assert_allclose(out, expected, rtol=1e-6)
+
+
+def test_v1_copies_partial_pixels_next_to_whole_missing_timestep() -> None:
+    raw = _raw()
+    expected = Normalizer().normalize(S2, _copy(raw, {"B01": "B02"}, t=0))
+    raw = _set(_set(raw, S2, ["B01"], np.nan, t=0), S2, S2.band_order, np.nan, t=1)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        out = NormalizerV1().normalize(S2, raw)
+    np.testing.assert_allclose(out[..., [0, 2], :], expected[..., [0, 2], :], rtol=1e-6)
+    assert (out[..., 1, :] == 0).all()
 
 
 def test_v1_copies_from_the_same_timestep_only() -> None:

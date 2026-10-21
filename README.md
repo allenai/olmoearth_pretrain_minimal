@@ -219,13 +219,14 @@ Keep every band in its place in the band order and mark missing values as NaN (o
 is for, so it fills missing bands the way that model expects:
 
 ```python
-from olmoearth_pretrain_minimal import NormalizerV1, NormalizerV1_1
+from olmoearth_pretrain_minimal import NormalizerV1, NormalizerV1_2
 
-normalized = NormalizerV1_1().normalize(Modality.SENTINEL2_L2A, data)  # v1.1 and later
+normalized = NormalizerV1_2().normalize(Modality.SENTINEL2_L2A, data)  # v1.2
 normalized = NormalizerV1().normalize(Modality.SENTINEL2_L2A, data)    # v1
 ```
 
-`Normalizer(model_type="v1")` and `Normalizer(model_type="v1.1")` are the same.
+There is one per model version (`NormalizerV1`, `NormalizerV1_1`, `NormalizerV1_2`,
+`NormalizerV1_3`); `Normalizer(model_type="v1.2")` and so on are the same.
 
 - **v1.1 and later** were trained with band dropout, so missing bands are set to 0
   after normalization, which is what the model saw for dropped bands.

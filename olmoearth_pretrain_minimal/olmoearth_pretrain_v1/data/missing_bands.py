@@ -70,17 +70,27 @@ def copy_nearest_bands(
     band_order = Modality.get(modality).band_order
     filled, still_missing = data.copy(), missing.copy()
     for group in groups:
+        group_missing = missing[..., [band_order.index(band) for band in group]]
+        # Nothing to copy unless some pixel and timestep has both missing and present
+        # bands in this group. Usually all missing values are whole missing timesteps.
+        if not (group_missing.any(axis=-1) & ~group_missing.all(axis=-1)).any():
+            continue
         for target, wavelength in group.items():
+            target_index = band_order.index(target)
+            if not still_missing[..., target_index].any():
+                continue
             sources = sorted(
                 (band for band in group if band != target),
                 key=lambda band: (abs(group[band] - wavelength), group[band]),
             )
-            t = band_order.index(target)
             for source in sources:
-                s = band_order.index(source)
-                copy = still_missing[..., t] & ~missing[..., s]
-                filled[..., t] = np.where(copy, data[..., s], filled[..., t])
-                still_missing[..., t] &= ~copy
+                source_index = band_order.index(source)
+                source_present = ~missing[..., source_index]
+                pixels_to_copy = still_missing[..., target_index] & source_present
+                filled[..., target_index] = np.where(
+                    pixels_to_copy, data[..., source_index], filled[..., target_index]
+                )
+                still_missing[..., target_index] &= ~pixels_to_copy
     worst = int((missing & ~still_missing).sum(axis=-1).max(initial=0))
     if worst / len(band_order) > MAX_FILLED_FRACTION:
         warnings.warn(

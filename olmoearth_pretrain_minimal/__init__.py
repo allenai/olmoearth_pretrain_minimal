@@ -10,6 +10,8 @@ from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.data.normalize import (
     Normalizer,
     NormalizerV1,
     NormalizerV1_1,
+    NormalizerV1_2,
+    NormalizerV1_3,
 )
 from olmoearth_pretrain_minimal.unet_head import UNetDecoder
 
@@ -21,5 +23,7 @@ __all__ = [
     "Normalizer",
     "NormalizerV1",
     "NormalizerV1_1",
+    "NormalizerV1_2",
+    "NormalizerV1_3",
     "UNetDecoder",
 ]

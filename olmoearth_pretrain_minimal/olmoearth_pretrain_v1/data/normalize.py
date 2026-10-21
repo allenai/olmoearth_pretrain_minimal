@@ -18,9 +18,9 @@ from olmoearth_pretrain_minimal.olmoearth_pretrain_v1.utils.constants import (
 
 logger = logging.getLogger(__name__)
 
-# Model types the Normalizer can fill missing bands for. "v1.1" covers v1.1 and later,
-# which were all trained with band dropout.
-MODEL_TYPES = ("v1", "v1.1")
+# Model types the Normalizer can fill missing bands for. Every model after v1 was
+# trained with band dropout, so they all fill missing bands the same way.
+MODEL_TYPES = ("v1", "v1.1", "v1.2", "v1.3")
 
 
 def load_computed_config() -> dict[str, dict]:
@@ -71,8 +71,8 @@ class Normalizer:
             model_type: The model the data is normalized for, which sets how missing
                 bands (NaN or ``MISSING_VALUE``) are filled. ``"v1"`` copies each
                 missing band from the present band nearest to it in wavelength,
-                since v1 was not trained with band dropout. ``"v1.1"`` (for v1.1 and
-                later) sets missing bands to 0 after normalization, which is what
+                since v1 was not trained with band dropout. ``"v1.1"``, ``"v1.2"`` and
+                ``"v1.3"`` set missing bands to 0 after normalization, which is what
                 those models saw for dropped bands. ``None`` leaves missing values
                 as they are. See ``NormalizerV1`` and ``NormalizerV1_1``.
         """
@@ -150,7 +150,7 @@ class Normalizer:
         """Warn when zeroed bands are likely to degrade model outputs."""
         worst = int(zeroed.sum(axis=-1).max())
         num_bands = len(modality.band_order)
-        if self.model_type == "v1.1" and worst / num_bands <= MAX_FILLED_FRACTION:
+        if self.model_type != "v1" and worst / num_bands <= MAX_FILLED_FRACTION:
             return
         warnings.warn(
             f"Up to {worst} of the {num_bands} {modality.name} bands were missing and "
@@ -170,8 +170,16 @@ class NormalizerV1(Normalizer):
 
 
 class NormalizerV1_1(Normalizer):
-    """``Normalizer`` for v1.1 and later models, which sets missing bands to 0."""
+    """``Normalizer`` for v1.1 models, which sets missing bands to 0."""
 
     def __init__(self, std_multiplier: float = 2.0) -> None:
         """Initialize the normalizer; see ``Normalizer``."""
         super().__init__(std_multiplier, model_type="v1.1")
+
+
+class NormalizerV1_2(NormalizerV1_1):
+    """``Normalizer`` for v1.2 models; identical to ``NormalizerV1_1``."""
+
+
+class NormalizerV1_3(NormalizerV1_1):
+    """``Normalizer`` for v1.3 models; identical to ``NormalizerV1_1``."""
