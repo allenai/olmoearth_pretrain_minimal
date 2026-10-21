@@ -228,6 +228,40 @@ print(Modality.SRTM.band_order)
 - For multitemporal modalities (Sentinel-2, Sentinel-1, Landsat), data shape is `(batch, height, width, time, bands)`
 - For single-temporal modalities (WorldCover, SRTM, etc.), data shape is `(batch, height, width, bands)`
 
+### Missing Bands
+
+Keep every band in its place in the band order and mark missing values as NaN (or
+`MISSING_VALUE` from `utils.constants`). Then tell the normalizer which model the data
+is for, so it fills missing bands the way that model expects:
+
+```python
+from olmoearth_pretrain_minimal import NormalizerV1, NormalizerV1_2
+
+normalized = NormalizerV1_2().normalize(Modality.SENTINEL2_L2A, data)  # v1.2
+normalized = NormalizerV1().normalize(Modality.SENTINEL2_L2A, data)    # v1
+```
+
+There is one per model version (`NormalizerV1`, `NormalizerV1_1`, `NormalizerV1_2`,
+`NormalizerV1_3`); `Normalizer(model_type="v1.2")` and so on are the same.
+
+- **v1.1 and later** were trained with band dropout, so missing bands are set to 0
+  after normalization, which is what the model saw for dropped bands.
+- **v1** was not, so each missing value is copied from the present band nearest to it
+  in wavelength at the same pixel and timestep (e.g. B01 from B02, B09 from B8A) before
+  normalizing, as the olmoearth_pretrain evals do. This applies to Sentinel-2 and
+  Landsat, with thermal bands only copied from thermal bands. Values that cannot be
+  copied are set to 0.
+
+A `UserWarning` is raised when more than 20% of a modality's bands are filled at a
+pixel and timestep (Sentinel-2 without B01 and B09 does not warn; Sentinel-2 with only
+RGB and NIR does), and for v1 whenever values are set to 0.
+
+If a whole band set (or timestep) has no data, either leave it out or mark it
+`MaskValue.MISSING` in the modality's mask so the encoder does not attend to it.
+
+`Normalizer()` without a `model_type` does not fill missing values. Data with the
+wrong number of bands raises an error rather than being misread.
+
 ### Note
 
 For the full package with training and evaluation capabilities, see the main [`olmoearth_pretrain`](https://github.com/allenai/olmoearth_pretrain) package.
