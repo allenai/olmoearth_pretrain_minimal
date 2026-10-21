@@ -66,7 +66,7 @@ v1.1 is described in the [OlmoEarth v1.1 tech report](https://arxiv.org/abs/2605
 
 </details>
 
-<details open>
+<details>
 <summary> v1.2 </summary>
 
 v1.2 is described in the [OlmoEarth v1.2 tech report](https://allenai.org/papers/olmoearth-v1-2).
@@ -75,8 +75,23 @@ v1.2 is described in the [OlmoEarth v1.2 tech report](https://allenai.org/papers
 | --- | --- | --- | --- |
 | Nano | [link](https://huggingface.co/allenai/OlmoEarth-v1_2-Nano) | 1.7M | 800K |
 | Tiny | [link](https://huggingface.co/allenai/OlmoEarth-v1_2-Tiny) | 12.5M | 1.9M |
-| Small | [link](https://huggingface.co/allenai/OlmoEarth-v1_2-Tiny) | 35.6M | 7.4M |
+| Small | [link](https://huggingface.co/allenai/OlmoEarth-v1_2-Small) | 35.6M | 7.4M |
 | Base | [link](https://huggingface.co/allenai/OlmoEarth-v1_2-Base) | 114M | 30M |
+
+</details>
+
+<details open>
+<summary> v1.3 </summary>
+
+v1.3 is described in the [OlmoEarth v1.3 tech report](https://allenai.org/papers/olmoearth-v1-3).
+
+It adds an AttentionPooler on top of the v1.2 encoder, which pools the encoder's
+patch tokens into a grid of location tokens (returned under `location_tokens` in the
+encoder output).
+
+| Model Size | Weights | Encoder Params | Decoder Params |
+| --- | --- | --- | --- |
+| Base | [link](https://huggingface.co/allenai/OlmoEarth-v1_3-Base) | 128M | 30M |
 
 </details>
 
@@ -97,6 +112,7 @@ from olmoearth_pretrain_minimal import ModelID, load_model_from_id
 # v1.1 models available at ModelID.{OLMOEARTH_V1_1_NANO, OLMOEARTH_V1_1_TINY, OLMOEARTH_V1_1_BASE}
 # v1.2 models available at ModelID.{OLMOEARTH_V1_2_NANO, OLMOEARTH_V1_2_TINY,
 #                                   OLMOEARTH_V1_2_SMALL, OLMOEARTH_V1_2_BASE}
+# v1.3 models available at ModelID.OLMOEARTH_V1_3_BASE
 model = load_model_from_id(ModelID.OLMOEARTH_V1_BASE, load_weights=True)
 
 # Load with randomly initialized weights

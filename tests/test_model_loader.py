@@ -159,6 +159,20 @@ def test_load_v1_1_base_model_with_weights() -> None:
     assert model.encoder.patch_embed_hidden_sizes == [64]
 
 
+@pytest.mark.slow
+def test_load_v1_3_base_model_with_weights() -> None:
+    """Test loading v1.3 base model with pre-trained weights."""
+    model = load_model_from_id(ModelID.OLMOEARTH_V1_3_BASE, load_weights=True)
+    assert model is not None
+    param_count = sum(p.numel() for p in model.parameters())
+    assert param_count > 0
+    assert model.encoder.patch_embeddings.band_dropout_rate == 0
+    assert model.encoder.band_dropout_rate == 0.2
+    assert model.encoder.patch_embed_hidden_sizes == [64]
+    assert model.encoder.position_encoding == "rope_3d_mixed"
+    assert model.encoder.attention_pooler is not None
+
+
 def test_direct_initialization() -> None:
     """Test direct model initialization with custom modalities."""
     model = OlmoEarthPretrain_v1(
@@ -430,11 +444,12 @@ def test_every_supported_size_builds(
         (ModelID.OLMOEARTH_V1_2_TINY, "v1.2", "tiny"),
         (ModelID.OLMOEARTH_V1_2_SMALL, "v1.2", "small"),
         (ModelID.OLMOEARTH_V1_2_BASE, "v1.2", "base"),
+        (ModelID.OLMOEARTH_V1_3_BASE, "v1.3", "base"),
     ],
 )
 def test_direct_initialization_matches_released_architecture(
     model_id: ModelID,
-    model_version: Literal["v1", "v1.1", "v1.2"],
+    model_version: Literal["v1", "v1.1", "v1.2", "v1.3"],
     model_size: Literal["nano", "tiny", "small", "base", "large"],
 ) -> None:
     """The directly built model must have the released model's parameter shapes.
