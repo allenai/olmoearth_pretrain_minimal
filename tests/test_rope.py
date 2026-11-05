@@ -123,3 +123,27 @@ def test_apply_2d_axial_rope_preserves_shape_and_norm() -> None:
     out = apply_2d_axial_rope(x, positions)
     assert out.shape == x.shape
     torch.testing.assert_close(out.norm(dim=-1), x.norm(dim=-1))
+
+
+@pytest.mark.parametrize(
+    "value", [encoding.value for encoding in PositionEncoding] + list(PositionEncoding)
+)
+def test_is_rope_traces_correctly_under_torch_compile(value: str) -> None:
+    """torch.compile must take the same is_rope branch as eager Python.
+
+    Regression test: Dynamo (at least through torch 2.9.1) mis-evaluates
+    ``"rope_3d_mixed" in {StrEnum members}`` as False, which silently dropped all
+    RoPE ops from compiled attention blocks. is_rope/is_2d_rope/is_3d_rope must
+    therefore compare against plain strings.
+    """
+    torch._dynamo.reset()
+
+    def f(x: torch.Tensor, s: str) -> torch.Tensor:
+        if PositionEncoding.is_rope(s):
+            return x + 1
+        return x - 1
+
+    x = torch.zeros(1)
+    eager = f(x, value)
+    compiled = torch.compile(f, backend="eager", fullgraph=True)(x, value)
+    torch.testing.assert_close(compiled, eager)
